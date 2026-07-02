@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs install --no-immutable && mkdir -p ../node_modules && ln -sfn $(pwd)/node_modules/next ../node_modules/next 2>/dev/null || true",
+  "installCommand": "npm install --no-audit --no-fund --prefix . next react react-dom && cd anything && node .yarn/releases/yarn-4.12.0.cjs install --no-immutable",
   "buildCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs workspace web build",
   "outputDirectory": "anything/apps/web/.next",
   "framework": "nextjs"
