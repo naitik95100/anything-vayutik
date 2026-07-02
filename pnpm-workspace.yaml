@@ -375,4 +375,7 @@ allowBuilds:
 
 packages:
   - .
+  - anything/apps/web
+  - anything/apps/mobile
+  - anything/publisher
 minimumReleaseAge: 1440
