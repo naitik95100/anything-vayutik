@@ -3,14 +3,11 @@
   "version": "1.0.0",
   "description": "AI Nexus - Chat, Image, Code, Video, and Audio Generation",
   "private": true,
-  "packageManager": "pnpm@8.0.0",
-  "workspaces": [
-    "anything/apps/web"
-  ],
+  "packageManager": "yarn@4.12.0",
   "scripts": {
-    "dev": "cd anything/apps/web && pnpm dev",
-    "build": "cd anything/apps/web && pnpm build",
-    "start": "cd anything/apps/web && pnpm start",
-    "lint": "cd anything/apps/web && pnpm lint"
+    "dev": "cd anything && yarn workspace web dev",
+    "build": "cd anything && yarn workspace web build",
+    "start": "cd anything && yarn workspace web start",
+    "lint": "cd anything && yarn workspace web lint"
   }
 }
