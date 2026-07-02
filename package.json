@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "AI Nexus - Chat, Image, Code, Video, and Audio Generation",
   "private": true,
+  "packageManager": "pnpm@8.0.0",
   "workspaces": [
     "anything/apps/web",
     "anything/apps/mobile",
@@ -13,8 +14,5 @@
     "build": "cd anything/apps/web && pnpm build",
     "start": "cd anything/apps/web && pnpm start",
     "lint": "cd anything/apps/web && pnpm lint"
-  },
-  "devDependencies": {
-    "pnpm": "^8.0.0"
   }
 }
