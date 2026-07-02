@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import './global.css';
 import { Providers } from './providers';
 
@@ -15,10 +16,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <script
-          src="https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs"
-          type="module"
-        ></script>
         <link
           rel="stylesheet"
           href="/fontawesome/releases/v6.3.0/css/pro.min.css?token=2c15cc0cc7"
@@ -26,6 +23,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <Providers>{children}</Providers>
+        <Script
+          src="https://unpkg.com/@dotlottie/player-component@latest/dist/dotlottie-player.mjs"
+          strategy="afterInteractive"
+          type="module"
+        />
       </body>
     </html>
   );
