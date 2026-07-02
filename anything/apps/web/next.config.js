@@ -4,12 +4,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  turbopack: {
-    // Pin the workspace root to THIS directory only.
-    // Without this, Turbopack was picking up C:\Users\PROGRAMMER\package-lock.json
-    // and watching the entire user profile tree — causing the "slow filesystem" warning.
-    root: __dirname,
-  },
   env: {
     NEXT_PUBLIC_CREATE_BASE_URL: process.env.NEXT_PUBLIC_CREATE_BASE_URL,
     NEXT_PUBLIC_CREATE_HOST: process.env.NEXT_PUBLIC_CREATE_HOST,

@@ -637,11 +637,13 @@ function ToggleRow({
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function AIChat() {
+  // ╔═══════════════════════════════════════════════════════════════════════════╗
+  // ║ HOOKS: ALL PRIMITIVE HOOKS FIRST (useState, useRef, useContext, etc.)    ║
+  // ╚═══════════════════════════════════════════════════════════════════════════╝
+  
   const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+  const isMobile = useIsMobile();
+  
   const {
     conversations,
     activeConversationId,
@@ -664,16 +666,6 @@ export default function AIChat() {
     setSelectedProvider,
     updateSettings,
   } = useStore();
-
-  const activeConv = useMemo(
-    () => conversations.find((c) => c.id === activeConversationId),
-    [conversations, activeConversationId]
-  ) as Conversation | undefined;
-  const messages = activeConv?.messages ?? EMPTY_MSGS;
-  const msgsRef = useRef(messages);
-  msgsRef.current = messages;
-  const msgCount = messages.length;
-  const isMobile = useIsMobile();
 
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -698,6 +690,27 @@ export default function AIChat() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // ╔═══════════════════════════════════════════════════════════════════════════╗
+  // ║ DERIVED STATE: computed values before effects                             ║
+  // ╚═══════════════════════════════════════════════════════════════════════════╝
+
+  const activeConv = useMemo(
+    () => conversations.find((c) => c.id === activeConversationId),
+    [conversations, activeConversationId]
+  ) as Conversation | undefined;
+  const messages = activeConv?.messages ?? EMPTY_MSGS;
+  const msgsRef = useRef(messages);
+  msgsRef.current = messages;
+  const msgCount = messages.length;
+
+  // ╔═══════════════════════════════════════════════════════════════════════════╗
+  // ║ EFFECTS: side effects                                                    ║
+  // ╚═══════════════════════════════════════════════════════════════════════════╝
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Sync mobilePanelTab → rightTab (via effect, not inline JSX)
   useEffect(() => {
@@ -818,14 +831,6 @@ export default function AIChat() {
     toast.success('Exported as JSON!');
   }, []);
 
-  if (!mounted) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-black dark:border-gray-800 dark:border-t-white" />
-      </div>
-    );
-  }
-
   const handleSend = useCallback(async () => {
     if (!input.trim() || isGenerating) return;
     let convId = activeConversationId;
@@ -935,6 +940,15 @@ export default function AIChat() {
     ({ sm: 'text-xs', md: 'text-sm', lg: 'text-base' } as Record<string, string>)[
       settings.fontSize
     ] ?? 'text-sm';
+
+  // Early return after all hooks
+  if (!mounted) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-black dark:border-gray-800 dark:border-t-white" />
+      </div>
+    );
+  }
 
   // ── SIDEBAR INNER ─────────────────────────────────────────────────────────
   const SidebarInner = (

@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd anything/apps/web && pnpm build",
+  "outputDirectory": "anything/apps/web/.next",
+  "framework": "nextjs",
+  "env": {
+    "VERCEL_ENV": "@vercel_env"
+  }
+}
