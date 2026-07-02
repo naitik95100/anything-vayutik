@@ -1,6 +1,3 @@
 {
-  "buildCommand": "cd anything/apps/web && pnpm install && pnpm build",
-  "outputDirectory": "anything/apps/web/.next",
-  "framework": "nextjs",
-  "nodeVersion": "18.x"
+  "rootDirectory": "anything/apps/web"
 }
