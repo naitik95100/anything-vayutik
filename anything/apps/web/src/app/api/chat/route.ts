@@ -1,11 +1,80 @@
+// OpenAI-compatible base URLs for each provider
+const PROVIDER_BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com',
+  groq: 'https://api.groq.com/openai',
+  mistral: 'https://api.mistral.ai',
+  perplexity: 'https://api.perplexity.ai',
+  deepseek: 'https://api.deepseek.com',
+  'xai-grok': 'https://api.x.ai',
+  cohere: 'https://api.cohere.ai/compatibility',
+  'together-ai': 'https://api.together.xyz',
+  'ai21-labs': 'https://api.ai21.com/studio',
+  qwen: 'https://dashscope-intl.aliyuncs.com/compatible-mode',
+  'google-gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
+  anthropic: 'https://api.anthropic.com',
+  'microsoft-phi': 'https://api.openai.com',
+  'meta-llama': 'https://api.together.xyz',
+};
+
+async function callChatCompletion(
+  provider: string,
+  apiKey: string,
+  model: string,
+  messages: { role: string; content: string }[],
+  temperature = 0.7,
+  maxTokens = 2048
+) {
+  // Use the provider's own base URL, fall back to AI Gateway
+  const baseUrl = PROVIDER_BASE_URLS[provider];
+
+  if (baseUrl) {
+    if (!apiKey) {
+      throw new Error(
+        `No API key found for "${provider}". Please add your key in the Keys tab on the right panel.`
+      );
+    }
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(`${provider} API error ${res.status}: ${raw.slice(0, 400)}`);
+    }
+    return JSON.parse(raw);
+  }
+
+  // Unknown provider — try via AI Gateway
+  const gatewayKey = apiKey || process.env.AI_GATEWAY_API_KEY;
+  if (!gatewayKey) {
+    throw new Error('No API key available. Please add a key in the Keys tab.');
+  }
+  const res = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${gatewayKey}`,
+    },
+    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(`AI Gateway error ${res.status}: ${raw.slice(0, 400)}`);
+  }
+  return JSON.parse(raw);
+}
+
 async function callAIGateway(endpoint: string, body: unknown) {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error(
-      'AI_GATEWAY_API_KEY is not set. Please add it in your project environment variables (Settings → Vars).'
+      'AI_GATEWAY_API_KEY is not set. Please add it in Settings → Vars.'
     );
   }
-
   const res = await fetch(`https://ai-gateway.vercel.sh${endpoint}`, {
     method: 'POST',
     headers: {
@@ -14,19 +83,29 @@ async function callAIGateway(endpoint: string, body: unknown) {
     },
     body: JSON.stringify(body),
   });
-
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`AI Gateway responded with ${res.status}: ${raw.slice(0, 300)}`);
+    throw new Error(`AI Gateway responded with ${res.status}: ${raw.slice(0, 400)}`);
   }
-
   return JSON.parse(raw);
 }
 
 export async function POST(request: Request) {
   try {
-    const { message, history, systemPrompt, temperature, maxTokens } =
-      await request.json();
+    const {
+      message,
+      history,
+      systemPrompt,
+      temperature,
+      maxTokens,
+      provider,
+      apiKey,
+      model,
+    } = await request.json();
+
+    const resolvedProvider = (provider ?? 'openai') as string;
+    const resolvedModel = (model ?? 'gpt-4o') as string;
+    const resolvedApiKey = ((apiKey as string) ?? '').trim();
 
     // ── IMAGE GENERATION ───────────────────────────────────────────────────
     if (message.startsWith('/image ') || message.startsWith('/imagine ')) {
@@ -74,26 +153,24 @@ export async function POST(request: Request) {
     if (message.startsWith('/audio ')) {
       const topic = message.replace('/audio ', '').trim();
 
-      const data = await callAIGateway('/v1/chat/completions', {
-        model: 'google/gemini-2.5-flash',
-        messages: [
+      const data = await callChatCompletion(
+        resolvedProvider,
+        resolvedApiKey,
+        resolvedModel,
+        [
           {
             role: 'user',
-            content: `Create a clear, engaging spoken narration script about: "${topic}". Write naturally as if being spoken aloud. Keep it to 2-3 paragraphs (30-60 seconds).`,
+            content: `Create a clear, engaging spoken narration script about: "${topic}". Write naturally as if being spoken aloud. Keep it to 2-3 paragraphs (30-60 seconds when read aloud).`,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 1024,
-      });
+        0.7,
+        1024
+      );
 
       const script = data?.choices?.[0]?.message?.content || '';
       if (!script) throw new Error('No audio script returned from the API.');
 
-      return Response.json({
-        role: 'assistant',
-        content: script,
-        type: 'audio',
-      });
+      return Response.json({ role: 'assistant', content: script, type: 'audio' });
     }
 
     // ── TEXT CHAT & CODE GENERATION ────────────────────────────────────────
@@ -110,9 +187,11 @@ export async function POST(request: Request) {
         ? 'You are an expert code assistant. Write complete, runnable code in markdown code blocks with the language specified (e.g. ```html, ```javascript, ```python).'
         : 'You are a helpful, friendly AI assistant. Be concise and accurate in your responses.');
 
-    const data = await callAIGateway('/v1/chat/completions', {
-      model: 'google/gemini-2.5-flash',
-      messages: [
+    const data = await callChatCompletion(
+      resolvedProvider,
+      resolvedApiKey,
+      resolvedModel,
+      [
         { role: 'system', content: sysPrompt },
         ...(history || []).map((m: { role: string; content: string }) => ({
           role: m.role,
@@ -120,9 +199,9 @@ export async function POST(request: Request) {
         })),
         { role: 'user', content: message },
       ],
-      temperature: temperature ?? 0.7,
-      max_tokens: maxTokens ?? 2048,
-    });
+      temperature ?? 0.7,
+      maxTokens ?? 2048
+    );
 
     const content = data?.choices?.[0]?.message?.content || '';
     if (!content) throw new Error('No content returned from the API.');
