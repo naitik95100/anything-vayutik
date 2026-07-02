@@ -2,6 +2,5 @@
   "installCommand": "cd anything && yarn install",
   "buildCommand": "cd anything && yarn workspace web build",
   "outputDirectory": "anything/apps/web/.next",
-  "framework": "nextjs",
-  "nodeVersion": "20.x"
+  "framework": "nextjs"
 }
