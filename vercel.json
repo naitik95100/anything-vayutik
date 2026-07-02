@@ -1,5 +1,6 @@
 {
-  "installCommand": "cd anything && yarn install",
-  "buildCommand": "cd anything && yarn workspace web build",
-  "outputDirectory": "anything/apps/web/.next"
+  "installCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs install",
+  "buildCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs workspace web build",
+  "outputDirectory": "anything/apps/web/.next",
+  "framework": "nextjs"
 }
