@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     if (message.startsWith('/image ') || message.startsWith('/imagine ')) {
       const prompt = message.replace(/^\/(image|imagine)\s+/, '').trim();
       try {
-        const res = await fetch('https://api.vercel.ai/image', {
+        const res = await fetch('https://ai-gateway.vercel.sh/v1/images/generations', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -15,14 +15,16 @@ export async function POST(request: Request) {
           },
           body: JSON.stringify({
             prompt,
-            model: 'google/imagen-3.0-generate-001',
+            model: 'google/imagen-4.0-generate-001',
+            n: 1,
+            size: '1024x1024',
           }),
         });
         const raw = await res.text();
         console.log('[image] status:', res.status, 'body:', raw.slice(0, 400));
         if (!res.ok) throw new Error(`image-generation ${res.status}: ${raw.slice(0, 200)}`);
         const data = JSON.parse(raw);
-        const url = data.url || data.imageUrl || data.image_url || data.src || '';
+        const url = data.data?.[0]?.url || data.url || data.imageUrl || data.image_url || '';
         if (!url) throw new Error('No image URL in response: ' + raw.slice(0, 200));
         return Response.json({
           role: 'assistant',
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
     if (message.startsWith('/video ')) {
       const prompt = message.replace('/video ', '').trim();
       try {
-        const res = await fetch('https://api.vercel.ai/video', {
+        const res = await fetch('https://ai-gateway.vercel.sh/v1/videos/generations', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -52,14 +54,14 @@ export async function POST(request: Request) {
           },
           body: JSON.stringify({
             prompt,
-            model: 'luma/genie-1',
+            model: 'google/veo-3.1-generate-001',
           }),
         });
         const raw = await res.text();
         console.log('[video] status:', res.status, 'body:', raw.slice(0, 400));
         if (!res.ok) throw new Error(`video-generation ${res.status}: ${raw.slice(0, 200)}`);
         const data = JSON.parse(raw);
-        const url = data.url || data.videoUrl || data.video_url || data.src || '';
+        const url = data.data?.[0]?.url || data.url || data.videoUrl || data.video_url || '';
         if (!url) throw new Error('No video URL in response: ' + raw.slice(0, 200));
         return Response.json({
           role: 'assistant',
@@ -84,14 +86,14 @@ export async function POST(request: Request) {
 Write it naturally as if being spoken aloud — conversational, vivid, and informative. 
 Keep it to 2-3 paragraphs (about 30-60 seconds of speech). Do NOT include stage directions or formatting markers, just the pure spoken text.`;
       
-      const res = await fetch('https://api.vercel.ai/v1/chat/completions', {
+      const res = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${process.env.AI_GATEWAY_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'google/gemini-2-flash',
+          model: 'google/gemini-2.5-flash',
           messages: [{ role: 'user', content: audioPrompt }],
           temperature: temperature ?? 0.7,
           max_tokens: maxTokens ?? 1024,
@@ -119,14 +121,14 @@ Keep it to 2-3 paragraphs (about 30-60 seconds of speech). Do NOT include stage 
 ${isCodeRequest ? 'When writing code, always wrap it in proper markdown code blocks with the language specified (e.g. ```html, ```javascript, ```python). For HTML/CSS/JS: write complete, self-contained code that can run immediately. Include all needed CSS and JS inline.' : ''}`;
 
     // Use Vercel AI Gateway
-    const aiRes = await fetch('https://api.vercel.ai/v1/chat/completions', {
+    const aiRes = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.AI_GATEWAY_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'google/gemini-2-flash',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: sysPrompt },
           ...(history || []).map((m: { role: string; content: string }) => ({
