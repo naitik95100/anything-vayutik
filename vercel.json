@@ -1,6 +1,7 @@
 {
-  "installCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs install",
+  "installCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs install --no-immutable && mkdir -p ../node_modules/.bin && ln -sfn ../anything/node_modules/next ../node_modules/next 2>/dev/null || true",
   "buildCommand": "cd anything && node .yarn/releases/yarn-4.12.0.cjs workspace web build",
   "outputDirectory": "anything/apps/web/.next",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- anything/apps/web/"
 }
