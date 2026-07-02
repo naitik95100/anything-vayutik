@@ -5,9 +5,7 @@
   "private": true,
   "packageManager": "pnpm@8.0.0",
   "workspaces": [
-    "anything/apps/web",
-    "anything/apps/mobile",
-    "anything/publisher"
+    "anything/apps/web"
   ],
   "scripts": {
     "dev": "cd anything/apps/web && pnpm dev",
