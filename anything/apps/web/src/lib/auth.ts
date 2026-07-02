@@ -94,6 +94,7 @@ async function verifyCompatiblePassword({
 
 export const auth = betterAuth({
   database: pool,
+  secret: process.env.BETTER_AUTH_SECRET || 'dev-secret-key-not-for-production',
   trustedOrigins,
   socialProviders,
   emailAndPassword: {
