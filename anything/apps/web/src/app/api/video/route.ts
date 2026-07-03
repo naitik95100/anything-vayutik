@@ -1,69 +1,139 @@
 import { NextResponse } from 'next/server';
 
-// Video generation — supported providers and their models:
-//  - fal.ai:    Wan 2.1 1.3B (FREE tier, requires fal.ai API key)
-//  - Novita AI: Wan 2.1 (PAID, requires balance)
-// OpenRouter does NOT have a real video generation endpoint.
+// Video generation — supported providers:
+//  - Replicate: Wan 2.1 & LTX Video (free $10 trial credit on sign-up)
+//  - Luma AI:   Dream Machine (10 free generations/month on free account)
+//  - Novita AI: Wan 2.1 (paid, balance required)
+//  - fal.ai:    Wan 2.1 1.3B (pay-per-use, not free)
+//
+// No provider offers completely unlimited free video generation via API.
+// All providers listed above have a free-to-start option (credits or free quota).
 
 function parseError(raw: string, status: number, provider: string): string {
   try {
     const p = JSON.parse(raw);
-    const msg = p?.error?.message ?? p?.message ?? p?.detail ?? raw.slice(0, 300);
+    const msg =
+      p?.error?.message ??
+      p?.detail ??
+      p?.message ??
+      (typeof p?.error === 'string' ? p.error : null) ??
+      raw.slice(0, 400);
     return `${provider} returned ${status}: ${msg}`;
   } catch {
-    return `${provider} returned ${status}: ${raw.slice(0, 300)}`;
+    return `${provider} returned ${status}: ${raw.slice(0, 400)}`;
   }
 }
 
-// ── fal.ai — Wan 2.1 1.3B (free tier) ────────────────────────────────────
-async function generateViaFal(prompt: string, apiKey: string): Promise<string> {
-  // Submit the request
-  const submitRes = await fetch('https://queue.fal.run/fal-ai/wan/v2.1/1.3b/text-to-video', {
+// ── Replicate — Wan 2.1 (free $10 trial credit, no billing required) ─────
+// Model: wavespeedai/wan-2.1-t2v-480p  (fastest, ~60s)
+async function generateViaReplicate(prompt: string, apiKey: string): Promise<string> {
+  // Create prediction
+  const createRes = await fetch('https://api.replicate.com/v1/models/wavespeedai/wan-2.1-t2v-480p/predictions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Key ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
+      Prefer: 'wait=60',  // wait up to 60s for result inline
+    },
+    body: JSON.stringify({ input: { prompt, num_frames: 49, fps: 16 } }),
+  });
+  const createRaw = await createRes.text();
+  if (!createRes.ok) throw new Error(parseError(createRaw, createRes.status, 'Replicate'));
+
+  const prediction = JSON.parse(createRaw) as {
+    id?: string;
+    status?: string;
+    output?: string | string[];
+    urls?: { get?: string };
+    error?: string;
+  };
+
+  if (prediction.status === 'failed') {
+    throw new Error(`Replicate prediction failed: ${prediction.error ?? 'unknown'}`);
+  }
+
+  // If completed inline, return immediately
+  if (prediction.status === 'succeeded') {
+    const out = prediction.output;
+    const url = Array.isArray(out) ? out[0] : out;
+    if (url) return url as string;
+  }
+
+  // Otherwise poll the get URL
+  const pollUrl = prediction.urls?.get;
+  if (!pollUrl) throw new Error(`Replicate did not return a poll URL. Response: ${createRaw.slice(0, 300)}`);
+
+  const deadline = Date.now() + 300_000; // 5 minutes
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 6000));
+    const pollRes = await fetch(pollUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const pollJson = await pollRes.json() as {
+      status?: string;
+      output?: string | string[];
+      error?: string;
+    };
+    if (pollJson.status === 'succeeded') {
+      const out = pollJson.output;
+      const url = Array.isArray(out) ? out[0] : out;
+      if (url) return url as string;
+      throw new Error('Replicate succeeded but output has no URL.');
+    }
+    if (pollJson.status === 'failed') {
+      throw new Error(`Replicate generation failed: ${pollJson.error ?? 'unknown'}`);
+    }
+    // starting | processing — keep polling
+  }
+  throw new Error('Replicate video generation timed out after 5 minutes.');
+}
+
+// ── Luma AI — Dream Machine (10 free generations/month) ──────────────────
+async function generateViaLuma(prompt: string, apiKey: string): Promise<string> {
+  // Submit generation request
+  const submitRes = await fetch('https://api.lumalabs.ai/dream-machine/v1/generations/video', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       prompt,
-      num_frames: 25,
-      frames_per_second: 16,
-      resolution: '480p',
-      num_inference_steps: 30,
+      generation_type: 'video',
+      resolution: '540p',
+      duration: '5s',
     }),
   });
   const submitRaw = await submitRes.text();
-  if (!submitRes.ok) throw new Error(parseError(submitRaw, submitRes.status, 'fal.ai'));
-  const submitJson = JSON.parse(submitRaw) as { request_id?: string; status_url?: string };
-  const requestId = submitJson.request_id;
-  if (!requestId) throw new Error(`fal.ai did not return a request_id: ${submitRaw.slice(0, 200)}`);
+  if (!submitRes.ok) throw new Error(parseError(submitRaw, submitRes.status, 'Luma AI'));
 
-  // Poll for result
-  const statusUrl = submitJson.status_url ?? `https://queue.fal.run/fal-ai/wan/v2.1/1.3b/text-to-video/requests/${requestId}`;
-  const deadline = Date.now() + 240_000; // 4 minute timeout
+  const submitJson = JSON.parse(submitRaw) as { id?: string };
+  const genId = submitJson.id;
+  if (!genId) throw new Error(`Luma AI did not return a generation ID. Response: ${submitRaw.slice(0, 300)}`);
+
+  // Poll until complete
+  const deadline = Date.now() + 300_000; // 5 minutes
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));
-    const statusRes = await fetch(statusUrl, {
-      headers: { Authorization: `Key ${apiKey}` },
+    const pollRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${genId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
-    const statusJson = await statusRes.json() as {
-      status?: string;
-      video?: { url?: string };
-      output?: { video?: { url?: string } };
-      error?: string;
+    const pollJson = await pollRes.json() as {
+      state?: string;
+      assets?: { video?: string };
+      failure_reason?: string;
     };
-    const status = statusJson.status;
-    if (status === 'COMPLETED' || statusJson.video?.url || statusJson.output?.video?.url) {
-      const url = statusJson.video?.url ?? statusJson.output?.video?.url;
+    if (pollJson.state === 'completed') {
+      const url = pollJson.assets?.video;
       if (url) return url;
-      throw new Error('fal.ai completed but returned no video URL.');
+      throw new Error('Luma AI completed but returned no video URL.');
     }
-    if (status === 'FAILED') {
-      throw new Error(`fal.ai video generation failed: ${statusJson.error ?? 'unknown error'}`);
+    if (pollJson.state === 'failed') {
+      throw new Error(`Luma AI generation failed: ${pollJson.failure_reason ?? 'unknown'}`);
     }
-    // IN_QUEUE or IN_PROGRESS — keep polling
+    // queued | dreaming — keep polling
   }
-  throw new Error('fal.ai video generation timed out after 4 minutes.');
+  throw new Error('Luma AI video generation timed out after 5 minutes.');
 }
 
 // ── Novita AI — Wan 2.1 (paid, requires balance) ─────────────────────────
@@ -82,7 +152,7 @@ async function pollNovitaVideo(taskId: string, apiKey: string): Promise<string> 
     if (status === 'TASK_STATUS_SUCCEED') {
       const url = json.videos?.[0]?.video_url;
       if (url) return url;
-      throw new Error('Novita video task succeeded but returned no URL.');
+      throw new Error('Novita succeeded but returned no video URL.');
     }
     if (status === 'TASK_STATUS_FAILED') throw new Error('Novita video generation failed.');
   }
@@ -126,19 +196,27 @@ export async function POST(req: Request) {
     };
 
     if (!prompt?.trim()) {
-      return NextResponse.json({ error: 'Prompt is required. Usage: /video a dolphin jumping in the ocean' });
+      return NextResponse.json({
+        error: 'Prompt is required. Usage: /video a dolphin jumping in the ocean',
+      });
     }
     if (!apiKey?.trim()) {
-      return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab.` });
+      return NextResponse.json({
+        error: `No API key set for "${provider}". Add it in the Keys tab on the right.`,
+      });
     }
 
     let videoUrl: string;
     let modelLabel: string;
 
     switch (provider) {
-      case 'fal-ai':
-        videoUrl = await generateViaFal(prompt.trim(), apiKey.trim());
-        modelLabel = 'Wan 2.1 1.3B (fal.ai)';
+      case 'replicate':
+        videoUrl = await generateViaReplicate(prompt.trim(), apiKey.trim());
+        modelLabel = 'Wan 2.1 480p (Replicate)';
+        break;
+      case 'luma-ai':
+        videoUrl = await generateViaLuma(prompt.trim(), apiKey.trim());
+        modelLabel = 'Dream Machine (Luma AI)';
         break;
       case 'novita-ai':
         videoUrl = await generateViaNovita(prompt.trim(), apiKey.trim());
@@ -146,7 +224,11 @@ export async function POST(req: Request) {
         break;
       default:
         return NextResponse.json({
-          error: `Video generation is supported on fal.ai (free tier) and Novita AI (paid). Switch to one of those providers in the Providers tab and add your API key. fal.ai offers a free tier — get a key at fal.ai/dashboard.`,
+          error:
+            `Video generation requires a dedicated provider. Recommended options:\n\n` +
+            `1. Replicate — Free $10 credit on sign-up (no billing required to start). Get key at replicate.com/account/api-tokens\n` +
+            `2. Luma AI — 10 free video generations/month. Get key at lumalabs.ai/dream-machine/api\n\n` +
+            `Switch to one of these in the Providers tab, add your API key, then try again.`,
         });
     }
 
@@ -154,6 +236,6 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown video generation error.';
     console.error('[api/video]', msg);
-    return NextResponse.json({ error: msg });
+    return NextResponse.json({ error: `Video error: ${msg}` });
   }
 }

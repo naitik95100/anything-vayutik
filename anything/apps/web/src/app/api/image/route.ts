@@ -18,50 +18,60 @@ function generateViaPollinations(prompt: string): string {
   return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=flux`;
 }
 
-// ── fal.ai — Free tier FLUX Schnell image generation ─────────────────────
-async function generateViaFal(prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Key ${apiKey}`,
-    },
-    body: JSON.stringify({
-      prompt,
-      image_size: 'square_hd',
-      num_images: 1,
-      enable_safety_checker: false,
-    }),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(parseError(raw, res.status, 'fal.ai'));
-  const json = JSON.parse(raw) as { images?: { url?: string }[] };
-  const url = json.images?.[0]?.url;
-  if (!url) throw new Error('fal.ai returned no image URL.');
-  return url;
-}
-
-// ── Hugging Face — FLUX.1-schnell (free inference API) ────────────────────
-async function generateViaHuggingFace(prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch(
-    'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+// ── Replicate — FLUX Schnell image (free $10 trial credit) ───────────────
+async function generateViaReplicate(prompt: string, apiKey: string): Promise<string> {
+  const createRes = await fetch(
+    'https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions',
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
+        Prefer: 'wait=60',
       },
-      body: JSON.stringify({ inputs: prompt }),
+      body: JSON.stringify({ input: { prompt, num_outputs: 1, output_format: 'webp' } }),
     },
   );
-  if (!res.ok) {
-    const raw = await res.text();
-    throw new Error(parseError(raw, res.status, 'HuggingFace'));
+  const createRaw = await createRes.text();
+  if (!createRes.ok) throw new Error(parseError(createRaw, createRes.status, 'Replicate'));
+
+  const prediction = JSON.parse(createRaw) as {
+    status?: string;
+    output?: string | string[];
+    urls?: { get?: string };
+    error?: string;
+  };
+
+  if (prediction.status === 'succeeded') {
+    const out = prediction.output;
+    const url = Array.isArray(out) ? out[0] : out;
+    if (url) return url as string;
   }
-  // HF returns binary image data
-  const buffer = await res.arrayBuffer();
-  const b64 = Buffer.from(buffer).toString('base64');
-  return `data:image/jpeg;base64,${b64}`;
+
+  // Poll if not completed inline
+  const pollUrl = prediction.urls?.get;
+  if (!pollUrl) throw new Error(`Replicate returned no poll URL: ${createRaw.slice(0, 300)}`);
+
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const pollRes = await fetch(pollUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const pollJson = await pollRes.json() as {
+      status?: string;
+      output?: string | string[];
+      error?: string;
+    };
+    if (pollJson.status === 'succeeded') {
+      const out = pollJson.output;
+      const url = Array.isArray(out) ? out[0] : out;
+      if (url) return url as string;
+      throw new Error('Replicate succeeded but output has no URL.');
+    }
+    if (pollJson.status === 'failed') {
+      throw new Error(`Replicate image failed: ${pollJson.error ?? 'unknown'}`);
+    }
+  }
+  throw new Error('Replicate image generation timed out.');
 }
 
 // ── Novita AI — async txt2img + polling ───────────────────────────────────
@@ -192,18 +202,16 @@ export async function POST(req: Request) {
       case 'google-ai-studio':
         url = await generateViaGoogle(prompt.trim(), apiKey.trim());
         break;
-      case 'fal-ai':
-        url = await generateViaFal(prompt.trim(), apiKey.trim());
-        break;
-      case 'huggingface':
-        url = await generateViaHuggingFace(prompt.trim(), apiKey.trim());
+      case 'replicate':
+        url = await generateViaReplicate(prompt.trim(), apiKey.trim());
         break;
       case 'openrouter':
       case 'groq':
+      case 'luma-ai':
       case 'custom':
       default:
         // Pollinations.AI — completely free, no API key or credits required.
-        // Returns a URL the browser can load directly as <img src>.
+        // Returns a URL the browser loads directly as <img src>.
         url = generateViaPollinations(prompt.trim());
         break;
     }
