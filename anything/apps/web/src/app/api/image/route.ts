@@ -10,35 +10,15 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── OpenRouter — Image generation (correct endpoint: /api/v1/images) ──────
-// Valid free models: google/gemini-3.1-flash-lite-image, black-forest-labs/flux.2-klein-4b
-async function generateViaOpenRouter(prompt: string, apiKey: string): Promise<string> {
-  // Try gemini-3.1-flash-lite-image first (free), fall back to flux.2-klein-4b
-  const models = ['google/gemini-3.1-flash-lite-image', 'black-forest-labs/flux.2-klein-4b'];
-  let lastError = '';
-
-  for (const model of models) {
-    const res = await fetch('https://openrouter.ai/api/v1/images', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-        'X-Title': 'AI Nexus',
-      },
-      body: JSON.stringify({ model, prompt }),
-    });
-    const raw = await res.text();
-    if (!res.ok) {
-      lastError = parseError(raw, res.status, `OpenRouter (${model})`);
-      continue;
-    }
-    const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
-    const item = json.data?.[0];
-    if (item?.url) return item.url;
-    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
-  }
-  throw new Error(lastError || 'OpenRouter returned no image data from any model.');
+// ── Pollinations.AI — Truly free, no API key needed ───────────────────────
+// Returns a direct image URL that works in <img> tags.
+async function generateViaPollinations(prompt: string): Promise<string> {
+  const encoded = encodeURIComponent(prompt);
+  // Use fetch to validate the URL resolves (it redirects to the actual image)
+  const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true`;
+  const res = await fetch(url, { method: 'HEAD' });
+  if (!res.ok) throw new Error(`Pollinations.AI returned ${res.status}`);
+  return url;
 }
 
 // ── Novita AI — async txt2img + polling ───────────────────────────────────
@@ -170,10 +150,11 @@ export async function POST(req: Request) {
         url = await generateViaGoogle(prompt.trim(), apiKey.trim());
         break;
       case 'openrouter':
+      case 'groq':
       case 'custom':
       default:
-        // OpenRouter is the universal fallback — supports FLUX Schnell free
-        url = await generateViaOpenRouter(prompt.trim(), apiKey.trim());
+        // Pollinations.AI — completely free, no API key or credits required
+        url = await generateViaPollinations(prompt.trim());
         break;
     }
 

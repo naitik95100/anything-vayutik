@@ -219,15 +219,45 @@ function MessageContent({ message, isUser }: { message: Message; isUser: boolean
   }
   const parts = parseContent(message.content);
   const hasCode = parts.some((p) => p.type === 'code');
+
+  // Render a text segment — detect inline markdown images ![alt](url) and render them
+  const renderTextSegment = (text: string, key: number) => {
+    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+    const segments: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = imgRegex.exec(text)) !== null) {
+      if (m.index > last) {
+        segments.push(<span key={`t${last}`}>{text.slice(last, m.index)}</span>);
+      }
+      segments.push(
+        <div key={`img${m.index}`} className="my-2">
+          <img
+            src={m[2]}
+            alt={m[1] || 'AI Generated'}
+            className="rounded-xl max-w-xs md:max-w-sm border border-gray-200 dark:border-gray-700 shadow-lg"
+          />
+        </div>,
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) segments.push(<span key={`t${last}`}>{text.slice(last)}</span>);
+    if (segments.length === 0) return <p key={key} className="whitespace-pre-wrap leading-relaxed">{text}</p>;
+    const hasImg = segments.some((s) => s && typeof s === 'object' && 'type' in s);
+    return hasImg ? (
+      <div key={key} className="whitespace-pre-wrap leading-relaxed">{segments}</div>
+    ) : (
+      <p key={key} className="whitespace-pre-wrap leading-relaxed">{segments}</p>
+    );
+  };
+
   return (
     <div className={cn('space-y-1', !isUser && hasCode ? 'w-full' : '')}>
       {parts.map((part, i) =>
         part.type === 'code' ? (
           <CodeBlock key={i} code={part.content} lang={part.lang} />
         ) : (
-          <p key={i} className="whitespace-pre-wrap leading-relaxed">
-            {part.content}
-          </p>
+          renderTextSegment(part.content, i)
         )
       )}
     </div>
@@ -970,11 +1000,11 @@ export default function AIChat() {
           model: selectedModel[selectedProvider],
         }),
       });
-      const data = await res.json() as { content?: string; type?: string; url?: string };
+      const data = await res.json() as { content?: string; type?: 'text' | 'image' | 'video' | 'audio' | 'code'; url?: string };
       addMessage({
         role: 'assistant',
         content: data.content ?? '',
-        type: data.type,
+        type: data.type ?? 'text',
         url: data.url,
         model: selectedProvider,
       });
@@ -2015,15 +2045,19 @@ export default function AIChat() {
         {showModal === 'shortcuts' && (
           <Modal onClose={() => setShowModal(null)} title="Keyboard Shortcuts">
             <div className="space-y-1">
-              {KEYBOARD_SHORTCUTS.map(({ key, description }) => (
+              {KEYBOARD_SHORTCUTS.map(({ keys, description }) => (
                 <div
-                  key={key}
+                  key={keys.join('+')}
                   className="flex items-center justify-between py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0"
                 >
                   <span className="text-sm text-gray-700 dark:text-gray-300">{description}</span>
-                  <kbd className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 font-mono text-gray-600 dark:text-gray-400">
-                    {key}
-                  </kbd>
+                  <div className="flex items-center gap-1">
+                    {keys.map((k) => (
+                      <kbd key={k} className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 font-mono text-gray-600 dark:text-gray-400">
+                        {k}
+                      </kbd>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2034,20 +2068,20 @@ export default function AIChat() {
         {showModal === 'templates' && (
           <Modal onClose={() => setShowModal(null)} title="Prompt Templates">
             <div className="grid gap-2">
-              {PROMPT_TEMPLATES.map(({ id, label, prompt }) => (
+              {PROMPT_TEMPLATES.map(({ label, value }) => (
                 <motion.button
-                  key={id}
+                  key={label}
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => {
-                    setInput(prompt);
+                    setInput(value);
                     setShowModal(null);
                     inputRef.current?.focus();
                   }}
                   className="w-full text-left p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-gray-400 dark:hover:border-gray-500 transition-all"
                 >
                   <div className="font-semibold text-sm text-gray-900 dark:text-white">{label}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{prompt}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{value}</div>
                 </motion.button>
               ))}
             </div>

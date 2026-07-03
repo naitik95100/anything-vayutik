@@ -172,51 +172,7 @@ export const PROVIDERS: Provider[] = [
         description: "Microsoft's small but mighty SLM",
         free: true,
       },
-      // ── Image generation (via OpenRouter) ──
-      {
-        id: 'google/gemini-3.1-flash-lite-image',
-        name: 'Gemini Flash Lite Image',
-        capabilities: ['image'],
-        description: "Google's fast image generation model",
-        free: true,
-      },
-      {
-        id: 'black-forest-labs/flux.2-klein-4b',
-        name: 'FLUX.2 Klein 4B (Image)',
-        capabilities: ['image'],
-        description: 'Black Forest Labs fast image model',
-        free: true,
-      },
-      // ── Video generation (via OpenRouter) ──
-      {
-        id: 'x-ai/grok-imagine-video',
-        name: 'Grok Video (Video)',
-        capabilities: ['video'],
-        description: "xAI's video generation model — free",
-        free: true,
-      },
-      {
-        id: 'alibaba/happyhorse-1.1',
-        name: 'HappyHorse 1.1 (Video)',
-        capabilities: ['video'],
-        description: "Alibaba's video generation model — free",
-        free: true,
-      },
-      {
-        id: 'google/veo-3.1-fast',
-        name: 'Veo 3.1 Fast (Video)',
-        capabilities: ['video'],
-        description: "Google's fast video generation model",
-        free: true,
-      },
-      // ── Audio generation (via OpenRouter) ──
-      {
-        id: 'google/lyria-3-pro-preview',
-        name: 'Lyria 3 Pro (Audio)',
-        capabilities: ['audio'],
-        description: "Google's music and audio generation model — free",
-        free: true,
-      },
+      // ── Image: use /image command — Pollinations.AI generates free images ──
     ],
     get models() { return ids(this.modelList); },
   },

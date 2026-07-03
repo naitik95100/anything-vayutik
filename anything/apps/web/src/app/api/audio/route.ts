@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 
-// Audio generation — Google Lyria 2 via OpenRouter
-// Returns a base64 data URI (audio/wav or audio/mp3) that the AudioPlayer component renders.
+// Audio generation
+// Primary: generate a spoken narration script via the active LLM provider,
+// then the client AudioPlayer reads it aloud using the browser's Web Speech API.
+// This works with EVERY provider (OpenRouter, Groq, Google, NVIDIA, etc.) since
+// it just calls chat/completions — no special audio endpoint needed.
 
 function parseError(raw: string, status: number, provider: string): string {
   try {
@@ -13,98 +16,86 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── OpenRouter — Google Lyria 3 Pro (music/audio generation) ─────────────
-// Valid model ID verified: google/lyria-3-pro-preview (free, 0 cost per token)
-async function generateViaLyria(prompt: string, apiKey: string): Promise<{ dataUrl: string; script?: string }> {
-  const res = await fetch('https://openrouter.ai/api/v1/audio/generations', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-      'X-Title': 'AI Nexus',
-    },
-    body: JSON.stringify({
-      model: 'google/lyria-3-pro-preview',
-      prompt,
-      n: 1,
-    }),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(parseError(raw, res.status, 'Lyria 2 (OpenRouter)'));
+// ── Per-provider base URLs for chat/completions ───────────────────────────
+const PROVIDER_BASE: Record<string, string> = {
+  openrouter:         'https://openrouter.ai/api/v1',
+  groq:               'https://api.groq.com/openai/v1',
+  'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta/openai/v1',
+  'nvidia-nim':       'https://integrate.api.nvidia.com/v1',
+  'novita-ai':        'https://api.novita.ai/v3/openai/v1',
+};
 
-  const json = JSON.parse(raw) as {
-    data?: { url?: string; b64_json?: string; audio_url?: string }[];
-    audio?: string;
-    url?: string;
-  };
+const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
+  openrouter:         'meta-llama/llama-3.3-70b-instruct',
+  groq:               'llama-3.3-70b-versatile',
+  'google-ai-studio': 'gemini-2.5-flash',
+  'nvidia-nim':       'meta/llama-3.1-8b-instruct',
+  'novita-ai':        'meta-llama/llama-3.3-70b-instruct',
+};
 
-  // Various response shapes OpenRouter may return
-  const item = json.data?.[0];
-  if (item?.url) return { dataUrl: item.url };
-  if (item?.audio_url) return { dataUrl: item.audio_url };
-  if (item?.b64_json) return { dataUrl: `data:audio/wav;base64,${item.b64_json}` };
-  if (json.audio) return { dataUrl: `data:audio/wav;base64,${json.audio}` };
-  if (json.url) return { dataUrl: json.url };
-
-  throw new Error('Lyria 2 returned no audio data. The model may still be in limited preview on OpenRouter.');
-}
-
-// ── Fallback: LLM-generated narration script (for non-OpenRouter providers)
-// The client-side AudioPlayer will speak this text via the Web Speech API.
-async function generateNarrationScript(topic: string, apiKey: string, provider: string): Promise<string> {
-  const baseUrls: Record<string, string> = {
-    groq: 'https://api.groq.com/openai',
-    'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta/openai',
-    'nvidia-nim': 'https://integrate.api.nvidia.com/v1',
-    'novita-ai': 'https://api.novita.ai/v3/openai',
-    litellm: '__skip__',
-    bytez: '__skip__',
-  };
-
-  const defaultModels: Record<string, string> = {
-    groq: 'llama-3.3-70b-versatile',
-    'google-ai-studio': 'gemini-2.5-flash',
-    'nvidia-nim': 'meta/llama-3.1-8b-instruct',
-    'novita-ai': 'meta-llama/llama-3.3-70b-instruct',
-  };
-
-  const baseUrl = baseUrls[provider] ?? 'https://openrouter.ai/api';
-  if (baseUrl === '__skip__') {
-    return `Here is a narration about "${topic}": ${topic}. This topic is fascinating and worth exploring in depth. The Web Speech API will read this aloud.`;
+// ── Generate a narration script via the user's active LLM provider ────────
+async function generateNarrationScript(
+  topic: string,
+  apiKey: string,
+  provider: string,
+  model?: string,
+): Promise<string> {
+  const baseUrl = PROVIDER_BASE[provider];
+  if (!baseUrl) {
+    // For unknown/custom providers, return a simple script
+    return `Here is a fascinating exploration of "${topic}". This subject spans many interesting areas worth discovering. The more you learn about it, the more intriguing it becomes.`;
   }
 
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+  // Google AI Studio uses the key as a query param when it looks like OAuth token
+  const isGoogleOAuth = provider === 'google-ai-studio' && apiKey.startsWith('AQ.');
+  const authHeaders: Record<string, string> = isGoogleOAuth
+    ? {} // will append ?key= below
+    : { Authorization: `Bearer ${apiKey}` };
+
+  const extraHeaders: Record<string, string> =
+    provider === 'openrouter'
+      ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'AI Nexus' }
+      : {};
+
+  const resolvedModel = model || PROVIDER_DEFAULT_MODEL[provider] || 'gpt-4o-mini';
+  const urlSuffix = isGoogleOAuth ? `?key=${apiKey}` : '';
+  const url = `${baseUrl}/chat/completions${urlSuffix}`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'AI Nexus' } : {}),
+      ...authHeaders,
+      ...extraHeaders,
     },
     body: JSON.stringify({
-      model: defaultModels[provider] ?? 'openai/gpt-4o-mini',
+      model: resolvedModel,
       messages: [
         {
           role: 'system',
-          content: 'You write concise spoken narration scripts. No markdown, no bullet points, only flowing prose meant to be read aloud. Keep it to 2-3 paragraphs.',
+          content:
+            'You write concise spoken narration scripts. No markdown, no bullet points, no asterisks — only natural flowing prose meant to be read aloud. Keep it to 2–3 paragraphs, about 150 words total.',
         },
-        { role: 'user', content: `Write a narration script about: ${topic}` },
+        { role: 'user', content: `Write a short narration script to be spoken aloud about: ${topic}` },
       ],
-      temperature: 0.7,
-      max_tokens: 500,
+      temperature: 0.8,
+      max_tokens: 400,
     }),
   });
 
   const raw = await res.text();
   if (!res.ok) throw new Error(parseError(raw, res.status, provider));
   const json = JSON.parse(raw) as { choices?: { message?: { content?: string } }[] };
-  return json.choices?.[0]?.message?.content ?? topic;
+  const content = json.choices?.[0]?.message?.content;
+  if (!content) throw new Error(`${provider} returned an empty narration script.`);
+  return content;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/audio
 // Body: { prompt: string, provider: string, apiKey: string, model?: string }
-// Returns: { dataUrl?, script?, type: 'audio' } | { error: string }
+// Returns: { script: string, type: 'audio', model: string }
+// The client AudioPlayer will speak the script via Web Speech API.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
@@ -116,27 +107,14 @@ export async function POST(req: Request) {
     };
 
     if (!prompt?.trim()) {
-      return NextResponse.json({ error: 'Prompt is required. Usage: /audio jazz music with piano' });
+      return NextResponse.json({ error: 'Prompt is required. Usage: /audio explain quantum computing' });
     }
     if (!apiKey?.trim()) {
       return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab.` });
     }
 
-    // Use Lyria 3 Pro if model is audio generation or provider is OpenRouter
-    const isLyriaRequest =
-      model === 'google/lyria-3-pro-preview' ||
-      model === 'google/lyria-2' || // legacy compat
-      provider === 'openrouter' ||
-      provider === 'custom';
-
-    if (isLyriaRequest) {
-      const { dataUrl, script } = await generateViaLyria(prompt.trim(), apiKey.trim());
-      return NextResponse.json({ dataUrl, script, type: 'audio', model: 'google/lyria-3-pro-preview' });
-    }
-
-    // For all other providers — generate a narration script, speak via Web Speech API on client
-    const script = await generateNarrationScript(prompt.trim(), apiKey.trim(), provider);
-    return NextResponse.json({ script, type: 'audio', model: 'tts-browser' });
+    const script = await generateNarrationScript(prompt.trim(), apiKey.trim(), provider, model);
+    return NextResponse.json({ script, type: 'audio', model: PROVIDER_DEFAULT_MODEL[provider] ?? provider });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown audio generation error.';
     console.error('[api/audio]', msg);

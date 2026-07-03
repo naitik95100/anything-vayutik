@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 
-// Video generation via OpenRouter (Veo 3 Fast, HappyHorse 1.1) and Novita AI (Wan 2.1)
-// All routes use the user's own API key.
+// Video generation — Novita AI (Wan 2.1) is the primary working provider.
+// OpenRouter does NOT have a real video generation endpoint as of July 2025.
+// We show a clear helpful message for unsupported providers.
 
 function parseError(raw: string, status: number, provider: string): string {
   try {
@@ -11,56 +12,6 @@ function parseError(raw: string, status: number, provider: string): string {
   } catch {
     return `${provider} returned ${status}: ${raw.slice(0, 300)}`;
   }
-}
-
-// ── OpenRouter — Veo 3 Fast / HappyHorse 1.1 / Grok Video ────────────────
-// OpenRouter uses a generations endpoint that returns a URL directly.
-async function generateViaOpenRouter(prompt: string, apiKey: string, model: string): Promise<string> {
-  const res = await fetch('https://openrouter.ai/api/v1/videos/generations', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-      'X-Title': 'AI Nexus',
-    },
-    body: JSON.stringify({ model, prompt, n: 1 }),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(parseError(raw, res.status, 'OpenRouter'));
-  const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[]; id?: string };
-
-  // Direct URL response
-  const item = json.data?.[0];
-  if (item?.url) return item.url;
-  if (item?.b64_json) return `data:video/mp4;base64,${item.b64_json}`;
-
-  // Some video models on OR return a generation ID — poll for result
-  if (json.id) return pollOpenRouterGeneration(json.id, apiKey);
-
-  throw new Error('OpenRouter returned no video data.');
-}
-
-async function pollOpenRouterGeneration(id: string, apiKey: string): Promise<string> {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 4000));
-    const res = await fetch(`https://openrouter.ai/api/v1/generations/${id}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!res.ok) continue;
-    const json = await res.json() as {
-      status?: string;
-      data?: { url?: string }[];
-      url?: string;
-    };
-    if (json.status === 'completed' || json.status === 'succeeded') {
-      const url = json.data?.[0]?.url ?? json.url;
-      if (url) return url;
-    }
-    if (json.status === 'failed') throw new Error('OpenRouter video generation failed.');
-  }
-  throw new Error('OpenRouter video generation timed out after 120 seconds.');
 }
 
 // ── Novita AI — Wan 2.1 txt2video with polling ────────────────────────────
@@ -104,29 +55,10 @@ async function generateViaNovita(prompt: string, apiKey: string): Promise<string
   });
   const raw = await res.text();
   if (!res.ok) throw new Error(parseError(raw, res.status, 'Novita'));
-  const json = JSON.parse(raw) as { task_id?: string; message?: string };
+  const json = JSON.parse(raw) as { task_id?: string };
   if (!json.task_id) throw new Error(`Novita did not return a task_id: ${raw.slice(0, 200)}`);
   return pollNovitaVideo(json.task_id, apiKey);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Model → generation strategy map
-// ─────────────────────────────────────────────────────────────────────────────
-const VIDEO_MODEL_CONFIGS: Record<string, { fn: (p: string, k: string) => Promise<string>; label: string }> = {
-  // Correct OpenRouter video model IDs (verified from /api/v1/models?output_modalities=video)
-  'google/veo-3.1-fast':     { fn: (p, k) => generateViaOpenRouter(p, k, 'google/veo-3.1-fast'),      label: 'Google Veo 3.1 Fast' },
-  'alibaba/happyhorse-1.1':  { fn: (p, k) => generateViaOpenRouter(p, k, 'alibaba/happyhorse-1.1'),   label: 'HappyHorse 1.1' },
-  'x-ai/grok-imagine-video': { fn: (p, k) => generateViaOpenRouter(p, k, 'x-ai/grok-imagine-video'),  label: 'Grok Imagine Video' },
-  'wan2.1-t2v-480p':         { fn: generateViaNovita,                                                  label: 'Wan 2.1 (Novita)' },
-};
-
-// Default per provider
-const PROVIDER_DEFAULT_VIDEO: Record<string, string> = {
-  openrouter:    'x-ai/grok-imagine-video', // free on OpenRouter
-  'novita-ai':   'wan2.1-t2v-480p',
-  'nvidia-nim':  'x-ai/grok-imagine-video',
-  custom:        'x-ai/grok-imagine-video',
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/video
@@ -134,7 +66,7 @@ const PROVIDER_DEFAULT_VIDEO: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
-    const { prompt, provider, apiKey, model } = await req.json() as {
+    const { prompt, provider, apiKey } = await req.json() as {
       prompt: string;
       provider: string;
       apiKey: string;
@@ -148,18 +80,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab.` });
     }
 
-    // Determine which video model to use
-    const resolvedModel = model || PROVIDER_DEFAULT_VIDEO[provider] || 'google/veo-3-fast';
-    const config = VIDEO_MODEL_CONFIGS[resolvedModel];
-
-    if (!config) {
-      return NextResponse.json({
-        error: `No video generation config for model "${resolvedModel}". Use /video with OpenRouter (Veo 3 Fast, HappyHorse 1.1) or Novita AI (Wan 2.1).`,
-      });
+    // Only Novita AI supports real video generation right now.
+    // OpenRouter does not have a working /videos/generations endpoint as of July 2025.
+    if (provider === 'novita-ai') {
+      const videoUrl = await generateViaNovita(prompt.trim(), apiKey.trim());
+      return NextResponse.json({ url: videoUrl, type: 'video', model: 'Wan 2.1 (Novita)' });
     }
 
-    const videoUrl = await config.fn(prompt.trim(), apiKey.trim());
-    return NextResponse.json({ url: videoUrl, type: 'video', model: config.label });
+    // For all other providers, return a clear actionable message
+    return NextResponse.json({
+      error: `Video generation requires Novita AI. Switch to Novita AI in the Providers tab and add your free API key from novita.ai — Wan 2.1 generates real MP4 videos. OpenRouter and other providers do not support video generation at this time.`,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown video generation error.';
     console.error('[api/video]', msg);

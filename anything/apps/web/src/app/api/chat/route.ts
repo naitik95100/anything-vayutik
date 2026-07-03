@@ -222,12 +222,22 @@ async function callOpenAICompat(
   providerId: string,
 ): Promise<string> {
   const path = cfg.chatPath ?? '/v1/chat/completions';
-  const url = `${cfg.baseUrl}${path}`;
 
-  const authHeaders: Record<string, string> =
-    cfg.authHeader === 'x-api-key'
-      ? { 'x-api-key': apiKey }
-      : { Authorization: `Bearer ${apiKey}` };
+  // Google AI Studio: new OAuth tokens start with "AQ." and must be sent as ?key= URL param,
+  // not as a Bearer header (which causes 403 PERMISSION_DENIED).
+  // Standard AIza... API keys also work via ?key= param.
+  const isGoogleStudio = providerId === 'google-ai-studio';
+  const urlSuffix = isGoogleStudio ? `?key=${encodeURIComponent(apiKey)}` : '';
+  const url = `${cfg.baseUrl}${path}${urlSuffix}`;
+
+  let authHeaders: Record<string, string>;
+  if (isGoogleStudio) {
+    authHeaders = {}; // key is in URL param
+  } else if (cfg.authHeader === 'x-api-key') {
+    authHeaders = { 'x-api-key': apiKey };
+  } else {
+    authHeaders = { Authorization: `Bearer ${apiKey}` };
+  }
 
   const res = await fetch(url, {
     method: 'POST',
