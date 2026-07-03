@@ -61,10 +61,10 @@ const CONFIGS: Record<string, ProviderConfig> = {
 };
 
 const DEFAULT_MODELS: Record<string, string> = {
-  openrouter:         'openai/gpt-4o-mini',
+  openrouter:         'meta-llama/llama-3.3-70b-instruct',
   groq:               'llama-3.3-70b-versatile',
-  'google-ai-studio': 'gemini-2.0-flash',
-  'nvidia-nim':       'meta/llama-3.3-70b-instruct',
+  'google-ai-studio': 'gemini-2.5-flash',
+  'nvidia-nim':       'meta/llama-3.1-8b-instruct',
   'novita-ai':        'meta-llama/llama-3.3-70b-instruct',
   litellm:            'gpt-4o',
   bytez:              'meta-llama/Llama-3.2-3B-Instruct',
@@ -311,8 +311,13 @@ export async function POST(req: Request) {
     const systemContent =
       systemPrompt?.trim() ||
       (isCodeRequest
-        ? 'You are an expert programmer. Provide complete, runnable code inside markdown fenced code blocks with the correct language identifier.'
-        : 'You are a helpful, knowledgeable AI assistant. Be accurate, concise and friendly.');
+        ? `You are an elite full-stack engineer. When writing code:
+- For HTML requests: produce a SINGLE complete self-contained HTML file with embedded CSS and JavaScript. Use modern CSS (flexbox/grid), smooth animations, and a polished professional UI. Never use placeholder comments — always write the full working implementation.
+- For React/Next.js: write complete components with all imports, hooks, and logic included.
+- For any language: produce production-quality code that actually runs — no TODOs, no placeholders, no omissions.
+- Always wrap code in markdown fenced blocks with the correct language tag (\`\`\`html, \`\`\`jsx, \`\`\`python, etc.).
+- After the code block, briefly explain what it does and how to use it.`
+        : 'You are a helpful, knowledgeable AI assistant. Be accurate, concise and friendly. Format responses with clear structure when helpful.');
 
     const messages: { role: string; content: string }[] = [
       { role: 'system', content: systemContent },

@@ -13,7 +13,8 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── OpenRouter — Google Lyria 2 (music/audio generation) ─────────────────
+// ── OpenRouter — Google Lyria 3 Pro (music/audio generation) ─────────────
+// Valid model ID verified: google/lyria-3-pro-preview (free, 0 cost per token)
 async function generateViaLyria(prompt: string, apiKey: string): Promise<{ dataUrl: string; script?: string }> {
   const res = await fetch('https://openrouter.ai/api/v1/audio/generations', {
     method: 'POST',
@@ -24,7 +25,7 @@ async function generateViaLyria(prompt: string, apiKey: string): Promise<{ dataU
       'X-Title': 'AI Nexus',
     },
     body: JSON.stringify({
-      model: 'google/lyria-2',
+      model: 'google/lyria-3-pro-preview',
       prompt,
       n: 1,
     }),
@@ -63,8 +64,8 @@ async function generateNarrationScript(topic: string, apiKey: string, provider: 
 
   const defaultModels: Record<string, string> = {
     groq: 'llama-3.3-70b-versatile',
-    'google-ai-studio': 'gemini-2.0-flash',
-    'nvidia-nim': 'meta/llama-3.3-70b-instruct',
+    'google-ai-studio': 'gemini-2.5-flash',
+    'nvidia-nim': 'meta/llama-3.1-8b-instruct',
     'novita-ai': 'meta-llama/llama-3.3-70b-instruct',
   };
 
@@ -121,15 +122,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab.` });
     }
 
-    // Use Lyria 2 if model is audio generation or provider is OpenRouter
+    // Use Lyria 3 Pro if model is audio generation or provider is OpenRouter
     const isLyriaRequest =
-      model === 'google/lyria-2' ||
+      model === 'google/lyria-3-pro-preview' ||
+      model === 'google/lyria-2' || // legacy compat
       provider === 'openrouter' ||
       provider === 'custom';
 
     if (isLyriaRequest) {
       const { dataUrl, script } = await generateViaLyria(prompt.trim(), apiKey.trim());
-      return NextResponse.json({ dataUrl, script, type: 'audio', model: 'google/lyria-2' });
+      return NextResponse.json({ dataUrl, script, type: 'audio', model: 'google/lyria-3-pro-preview' });
     }
 
     // For all other providers — generate a narration script, speak via Web Speech API on client

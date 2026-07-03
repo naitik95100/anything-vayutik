@@ -10,31 +10,35 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── OpenRouter — FLUX Schnell (free tier) ─────────────────────────────────
+// ── OpenRouter — Image generation (correct endpoint: /api/v1/images) ──────
+// Valid free models: google/gemini-3.1-flash-lite-image, black-forest-labs/flux.2-klein-4b
 async function generateViaOpenRouter(prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch('https://openrouter.ai/api/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-      'X-Title': 'AI Nexus',
-    },
-    body: JSON.stringify({
-      model: 'black-forest-labs/flux-schnell',
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'url',
-    }),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(parseError(raw, res.status, 'OpenRouter'));
-  const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
-  const item = json.data?.[0];
-  if (item?.url) return item.url;
-  if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
-  throw new Error('OpenRouter returned no image data.');
+  // Try gemini-3.1-flash-lite-image first (free), fall back to flux.2-klein-4b
+  const models = ['google/gemini-3.1-flash-lite-image', 'black-forest-labs/flux.2-klein-4b'];
+  let lastError = '';
+
+  for (const model of models) {
+    const res = await fetch('https://openrouter.ai/api/v1/images', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://v0-nexus99.vercel.app',
+        'X-Title': 'AI Nexus',
+      },
+      body: JSON.stringify({ model, prompt }),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      lastError = parseError(raw, res.status, `OpenRouter (${model})`);
+      continue;
+    }
+    const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
+    const item = json.data?.[0];
+    if (item?.url) return item.url;
+    if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  }
+  throw new Error(lastError || 'OpenRouter returned no image data from any model.');
 }
 
 // ── Novita AI — async txt2img + polling ───────────────────────────────────

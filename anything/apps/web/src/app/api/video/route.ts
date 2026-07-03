@@ -113,18 +113,19 @@ async function generateViaNovita(prompt: string, apiKey: string): Promise<string
 // Model → generation strategy map
 // ─────────────────────────────────────────────────────────────────────────────
 const VIDEO_MODEL_CONFIGS: Record<string, { fn: (p: string, k: string) => Promise<string>; label: string }> = {
-  'google/veo-3-fast':       { fn: (p, k) => generateViaOpenRouter(p, k, 'google/veo-3-fast'),        label: 'Google Veo 3 Fast' },
+  // Correct OpenRouter video model IDs (verified from /api/v1/models?output_modalities=video)
+  'google/veo-3.1-fast':     { fn: (p, k) => generateViaOpenRouter(p, k, 'google/veo-3.1-fast'),      label: 'Google Veo 3.1 Fast' },
   'alibaba/happyhorse-1.1':  { fn: (p, k) => generateViaOpenRouter(p, k, 'alibaba/happyhorse-1.1'),   label: 'HappyHorse 1.1' },
-  'x-ai/grok-2-aurora':      { fn: (p, k) => generateViaOpenRouter(p, k, 'x-ai/grok-2-aurora'),       label: 'Grok 2 Aurora' },
+  'x-ai/grok-imagine-video': { fn: (p, k) => generateViaOpenRouter(p, k, 'x-ai/grok-imagine-video'),  label: 'Grok Imagine Video' },
   'wan2.1-t2v-480p':         { fn: generateViaNovita,                                                  label: 'Wan 2.1 (Novita)' },
 };
 
 // Default per provider
 const PROVIDER_DEFAULT_VIDEO: Record<string, string> = {
-  openrouter:    'google/veo-3-fast',
+  openrouter:    'x-ai/grok-imagine-video', // free on OpenRouter
   'novita-ai':   'wan2.1-t2v-480p',
-  'nvidia-nim':  'google/veo-3-fast', // route through openrouter
-  custom:        'google/veo-3-fast',
+  'nvidia-nim':  'x-ai/grok-imagine-video',
+  custom:        'x-ai/grok-imagine-video',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
