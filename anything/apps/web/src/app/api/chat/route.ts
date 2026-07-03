@@ -28,10 +28,12 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'bearer',
   },
   'google-ai-studio': {
-    // Google's OpenAI-compatible shim — requires x-goog-api-key header (NOT Bearer).
-    // Works for both AIza... REST keys and AQ.Ab... OAuth tokens.
+    // Google's OpenAI-compatible shim — base already includes /v1beta/openai,
+    // so the chat path must NOT include another /v1 prefix.
+    // Final URL = https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     authHeader: 'bearer', // overridden in callOpenAICompat for this provider
+    chatPath: '/chat/completions',
   },
   'nvidia-nim': {
     // Base already includes /v1, so chatPath must be just /chat/completions
@@ -171,17 +173,30 @@ async function callCustom(
 
   // Try candidate URL paths in priority order.
   // If the base already ends with /chat/completions, use it directly.
-  // Otherwise try /v1/chat/completions first (standard OpenAI), then bare /chat/completions
-  // (some providers like MuleRouter omit the /v1 prefix at the base level).
+  // Known provider shapes:
+  //   OpenRouter:  https://openrouter.ai        → /api/v1/chat/completions
+  //   MuleRouter:  https://api.mulerouter.ai     → /chat/completions (no /v1)
+  //   OpenAI-compat: most                        → /v1/chat/completions
   let candidateUrls: string[];
   if (rawBase.endsWith('/chat/completions')) {
     candidateUrls = [rawBase];
   } else if (rawBase.endsWith('/v1')) {
     candidateUrls = [`${rawBase}/chat/completions`];
+  } else if (rawBase.endsWith('/api')) {
+    // e.g. https://openrouter.ai/api → /api/v1/chat/completions
+    candidateUrls = [
+      `${rawBase}/v1/chat/completions`,
+      `${rawBase}/chat/completions`,
+    ];
+  } else if (rawBase.includes('openrouter.ai')) {
+    candidateUrls = [
+      `https://openrouter.ai/api/v1/chat/completions`,
+    ];
   } else {
     candidateUrls = [
       `${rawBase}/v1/chat/completions`,
       `${rawBase}/chat/completions`,
+      `${rawBase}/api/v1/chat/completions`,
     ];
   }
 
@@ -201,11 +216,15 @@ async function callCustom(
       body,
     });
     const raw = await res.text();
-    if (!res.ok) {
-      lastErr = parseError(raw, res.status, 'Custom Provider');
-      // If it's a 404, try the next candidate URL
-      if (res.status === 404) continue;
-      // Any other error (401, 400, 500) — throw immediately, not a path problem
+    // If server returns HTML (wrong path, reverse-proxy error page) treat as 404
+    const isHtml = raw.trimStart().startsWith('<');
+    if (!res.ok || isHtml) {
+      lastErr = isHtml
+        ? `Custom provider returned an HTML page at ${url} — wrong path? Try another endpoint format.`
+        : parseError(raw, res.status, 'Custom Provider');
+      // On 404 or HTML, try the next candidate URL
+      if (res.status === 404 || isHtml) continue;
+      // Any other error (401, 400, 500) — throw immediately
       throw new Error(lastErr);
     }
     const json = JSON.parse(raw);
@@ -300,6 +319,14 @@ async function callOpenAICompat(
   const raw = await res.text();
   if (!res.ok) throw new Error(parseError(raw, res.status, providerId));
 
+  // Guard against HTML error pages (wrong endpoint, reverse proxy, etc.)
+  if (raw.trimStart().startsWith('<')) {
+    throw new Error(
+      `${providerId} returned an HTML page instead of JSON. ` +
+      `The endpoint URL may be wrong. Configured base: ${cfg.baseUrl}${cfg.chatPath ?? '/v1/chat/completions'}`,
+    );
+  }
+
   const json = JSON.parse(raw);
   const content =
     json?.choices?.[0]?.message?.content ??
@@ -323,6 +350,7 @@ export async function POST(req: Request) {
       temperature = 0.7,
       maxTokens = 2048,
       model: rawModel,
+      images = [], // base64 data URLs for vision models
     } = body as {
       message: string;
       provider: string;
@@ -332,6 +360,7 @@ export async function POST(req: Request) {
       temperature?: number;
       maxTokens?: number;
       model?: string;
+      images?: string[];
     };
 
     const provider = rawProvider.trim();
@@ -373,13 +402,26 @@ export async function POST(req: Request) {
 - After the code block, briefly explain what it does and how to use it.`
         : 'You are a helpful, knowledgeable AI assistant. Be accurate, concise and friendly. Format responses with clear structure when helpful.');
 
-    const messages: { role: string; content: string }[] = [
+    // Build the user message — if images are attached, use the OpenAI vision
+    // multipart content array format (works with GPT-4o, Gemini, Claude via OR).
+    const userContent: string | { type: string; text?: string; image_url?: { url: string } }[] =
+      images.length > 0
+        ? [
+            { type: 'text', text: message },
+            ...images.map((dataUrl: string) => ({
+              type: 'image_url',
+              image_url: { url: dataUrl },
+            })),
+          ]
+        : message;
+
+    const messages: { role: string; content: unknown }[] = [
       { role: 'system', content: systemContent },
       ...history
         .slice(-20)
         .filter((m: { role: string; content: string }) => m.role && m.content)
         .map((m: { role: string; content: string }) => ({ role: m.role, content: String(m.content) })),
-      { role: 'user', content: message },
+      { role: 'user', content: userContent },
     ];
 
     // ── Dispatch to correct handler ────────────────────────────────────────

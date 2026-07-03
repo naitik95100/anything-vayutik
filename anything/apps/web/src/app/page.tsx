@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import {
   Plus,
@@ -46,6 +47,9 @@ import {
   Layers,
   Edit2,
   Link,
+  Paperclip,
+  Swords,
+  Code2,
 } from 'lucide-react';
 import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, detectCustomProvider, type ModelCapability } from '@/constants/providers';
 import { useStore, type Message, type Conversation, type CustomProvider } from '@/utils/store';
@@ -737,6 +741,9 @@ export default function AIChat() {
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const [cpForm, setCpForm] = useState({ name: '', icon: '', endpoint: '', model: '' });
+  // Image upload for vision models
+  const [attachedImages, setAttachedImages] = useState<{ dataUrl: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -890,9 +897,12 @@ export default function AIChat() {
       setActiveConversation(convId);
     }
     const userText = input.trim();
+    const userImages = attachedImages.map((i) => i.dataUrl);
     setInput('');
+    setAttachedImages([]);
     setShowCommandMenu(false);
-    addMessage({ role: 'user', content: userText });
+    // Show images inline in the user's message bubble
+    addMessage({ role: 'user', content: userText, images: userImages } as Parameters<typeof addMessage>[0]);
     setIsGenerating(true);
 
     const apiKey = apiKeys[selectedProvider] ?? '';
@@ -974,6 +984,7 @@ export default function AIChat() {
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
           model: selectedModel[selectedProvider],
+          images: userImages,
         }),
       });
       const data = await res.json() as { content?: string; type?: 'text' | 'image' | 'audio' | 'code'; url?: string };
@@ -1191,6 +1202,20 @@ export default function AIChat() {
           <span>{conversations.length} chats</span>
           <span>{configuredCount} keys</span>
         </div>
+        <Link
+          href="/builder"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
+        >
+          <Code2 size={14} />
+          App Builder
+        </Link>
+        <Link
+          href="/battle"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
+        >
+          <Swords size={14} />
+          Model Battle
+        </Link>
         <button
           onClick={() => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
@@ -1564,7 +1589,7 @@ export default function AIChat() {
               </div>
             </div>
           )}
-          {/* ── Multi-custom-provider management ─────────────────────────────── */}
+          {/* ── Multi-custom-provider management ──────────────────���──────────── */}
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
@@ -2139,7 +2164,51 @@ export default function AIChat() {
                 />
               )}
             </AnimatePresence>
+            {/* Attached image previews */}
+            {attachedImages.length > 0 && (
+              <div className="flex gap-2 mb-2 flex-wrap">
+                {attachedImages.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={img.dataUrl}
+                      alt={img.name}
+                      className="w-16 h-16 object-cover rounded-xl border border-gray-200 dark:border-gray-700"
+                    />
+                    <button
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                files.forEach((file) => {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const dataUrl = ev.target?.result as string;
+                    setAttachedImages((prev) => [...prev, { dataUrl, name: file.name }]);
+                  };
+                  reader.readAsDataURL(file);
+                });
+                // Reset input so same file can be re-uploaded
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            />
+
             <div className="flex items-end gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2 focus-within:border-gray-400 dark:focus-within:border-gray-500 transition-colors shadow-sm">
+              {/* Slash commands */}
               <button
                 onClick={() => {
                   setInput('/');
@@ -2149,6 +2218,19 @@ export default function AIChat() {
                 title="Commands"
               >
                 <Slash size={15} />
+              </button>
+              {/* Image upload */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex-shrink-0 mb-0.5 relative"
+                title="Attach image (vision models)"
+              >
+                <Paperclip size={15} />
+                {attachedImages.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                    {attachedImages.length}
+                  </span>
+                )}
               </button>
               <textarea
                 ref={inputRef}

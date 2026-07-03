@@ -10,8 +10,63 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── IMAGE MODELS — free, no credit card required ───────────────────────────
-// Listed here for UI reference and routing
+// ── Together AI — FLUX / SDXL / other models ─────────────────────────────
+async function generateViaTogetherAI(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const imageModel = model || 'black-forest-labs/FLUX.1-schnell-Free';
+  const res = await fetch('https://api.together.xyz/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: imageModel, prompt, n: 1, width: 1024, height: 1024, steps: 4 }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'Together AI'));
+  const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
+  const item = json.data?.[0];
+  if (item?.url) return item.url;
+  if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  throw new Error('Together AI returned no image data.');
+}
+
+// ── Hugging Face Inference — FLUX / SD models ─────────────────────────────
+async function generateViaHuggingFace(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const hfModel = model || 'black-forest-labs/FLUX.1-schnell';
+  const res = await fetch(`https://router.huggingface.co/hf-inference/models/${hfModel}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ inputs: prompt, parameters: { num_inference_steps: 4 } }),
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new Error(parseError(raw, res.status, 'Hugging Face'));
+  }
+  // HF returns the image as raw binary (blob)
+  const blob = await res.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  const b64 = Buffer.from(arrayBuffer).toString('base64');
+  const mime = blob.type || 'image/jpeg';
+  return `data:${mime};base64,${b64}`;
+}
+
+// ── fal.ai — FLUX, SD3, ControlNet ───────────────────────────────────────
+async function generateViaFal(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const falModel = model || 'fal-ai/flux/schnell';
+  const res = await fetch(`https://fal.run/${falModel}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+    body: JSON.stringify({ prompt, image_size: 'square_hd', num_inference_steps: 4, num_images: 1 }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'fal.ai'));
+  const json = JSON.parse(raw) as { images?: { url?: string; content_type?: string }[]; image?: { url?: string } };
+  const url = json.images?.[0]?.url || json.image?.url;
+  if (url) return url;
+  throw new Error('fal.ai returned no image URL.');
+}
+
+// ── IMAGE MODELS catalog — shown in image picker UI ───────────────────────
 export const FREE_IMAGE_MODELS = [
   {
     id: 'pollinations-flux',
@@ -79,6 +134,78 @@ export const FREE_IMAGE_MODELS = [
     description: "Google's best image model — free tier with API key",
     free: true,
     quality: 'Premium',
+  },
+  {
+    id: 'together-flux-schnell',
+    name: 'FLUX Schnell Free (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'black-forest-labs/FLUX.1-schnell-Free',
+    description: 'FLUX Schnell — free tier on Together AI, no credits needed',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'together-flux-dev',
+    name: 'FLUX Dev (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'black-forest-labs/FLUX.1-dev',
+    description: 'FLUX Dev — highest quality via Together AI',
+    free: false,
+    quality: 'Premium',
+  },
+  {
+    id: 'together-sdxl',
+    name: 'Stable Diffusion XL (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+    description: 'SDXL base on Together AI',
+    free: false,
+    quality: 'Good',
+  },
+  {
+    id: 'fal-flux-schnell',
+    name: 'FLUX Schnell (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/flux/schnell',
+    description: 'Ultra-fast FLUX Schnell via fal.ai — pay per image',
+    free: false,
+    quality: 'Excellent',
+  },
+  {
+    id: 'fal-flux-dev',
+    name: 'FLUX Dev (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/flux/dev',
+    description: 'High quality FLUX Dev via fal.ai',
+    free: false,
+    quality: 'Premium',
+  },
+  {
+    id: 'fal-sd3',
+    name: 'Stable Diffusion 3 (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/stable-diffusion-v3-medium',
+    description: 'SD3 Medium via fal.ai',
+    free: false,
+    quality: 'Good',
+  },
+  {
+    id: 'hf-flux-schnell',
+    name: 'FLUX Schnell (Hugging Face)',
+    provider: 'huggingface',
+    hfModel: 'black-forest-labs/FLUX.1-schnell',
+    description: 'FLUX Schnell via HF Inference API — free tier available',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'hf-sdxl',
+    name: 'Stable Diffusion XL (Hugging Face)',
+    provider: 'huggingface',
+    hfModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+    description: 'SDXL via Hugging Face Inference API',
+    free: true,
+    quality: 'Good',
   },
 ];
 
@@ -325,12 +452,15 @@ async function generateViaGoogle(prompt: string, apiKey: string): Promise<string
 // ─────────────────────��───────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
-    const { prompt, provider, apiKey, imageModel, model } = await req.json() as {
+    const { prompt, provider, apiKey, imageModel, model, togetherModel, falModel, hfModel } = await req.json() as {
       prompt: string;
       provider: string;
       apiKey: string;
-      imageModel?: string; // optional Pollinations variant override
-      model?: string;      // selected model for provider (used by custom)
+      imageModel?: string;   // Pollinations variant override
+      model?: string;        // generic model override for custom providers
+      togetherModel?: string;
+      falModel?: string;
+      hfModel?: string;
     };
 
     if (!prompt?.trim()) {
@@ -385,6 +515,27 @@ export async function POST(req: Request) {
           url = generateViaPollinations(prompt.trim());
         } else {
           url = await generateViaCustom(prompt.trim(), apiKey.trim(), model ?? 'auto');
+        }
+        break;
+      case 'together-ai':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaTogetherAI(prompt.trim(), apiKey.trim(), togetherModel);
+        }
+        break;
+      case 'fal-ai':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaFal(prompt.trim(), apiKey.trim(), falModel);
+        }
+        break;
+      case 'huggingface':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaHuggingFace(prompt.trim(), apiKey.trim(), hfModel);
         }
         break;
       case 'openrouter':
