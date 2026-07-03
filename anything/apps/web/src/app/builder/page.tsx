@@ -1,199 +1,419 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Send, RefreshCw, Eye, Code2, MessageSquare, Plus, Trash2,
-  ChevronRight, Download, GitBranch, Sparkles, Settings, X, Check,
+  Download, GitBranch, Sparkles, X, Check,
   FileCode, FileText, File, Palette, Zap, Monitor, Smartphone,
-  Tablet, ChevronLeft, ArrowLeft, Copy,
+  Tablet, ArrowLeft, Copy, Paperclip, Image as ImageIcon,
+  ChevronDown, FolderOpen, Settings, AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStore } from '@/utils/store';
+import { PROVIDERS } from '@/constants/providers';
 import { cn } from '@/lib/utils';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 // ── Design system presets ──────────────────────────────────────────────────
 const DESIGN_PRESETS = [
-  { id: 'minimal', name: 'Minimal', desc: 'Clean white, Inter font, subtle shadows', colors: ['#fff', '#111', '#f5f5f5', '#e0e0e0'], font: 'Inter' },
-  { id: 'dark-pro', name: 'Dark Pro', desc: 'Dark bg, neon accents, monospace', colors: ['#0f0f0f', '#fff', '#6ee7b7', '#374151'], font: 'JetBrains Mono' },
+  { id: 'minimal', name: 'Minimal', desc: 'Clean white, subtle shadows', colors: ['#ffffff', '#111111', '#f5f5f5', '#e0e0e0'], font: 'Inter' },
+  { id: 'dark-pro', name: 'Dark Pro', desc: 'Dark bg, neon accents', colors: ['#0f0f0f', '#ffffff', '#6ee7b7', '#374151'], font: 'JetBrains Mono' },
   { id: 'ocean', name: 'Ocean', desc: 'Deep blues and teals', colors: ['#0f172a', '#38bdf8', '#0ea5e9', '#e2e8f0'], font: 'Plus Jakarta Sans' },
-  { id: 'sunset', name: 'Sunset', desc: 'Warm oranges, reds, creams', colors: ['#fff7ed', '#ea580c', '#dc2626', '#1c1917'], font: 'Sora' },
+  { id: 'sunset', name: 'Sunset', desc: 'Warm oranges and reds', colors: ['#fff7ed', '#ea580c', '#dc2626', '#1c1917'], font: 'Sora' },
   { id: 'forest', name: 'Forest', desc: 'Earthy greens and browns', colors: ['#f0fdf4', '#166534', '#15803d', '#1c1917'], font: 'DM Sans' },
   { id: 'candy', name: 'Candy', desc: 'Bright pinks and purples', colors: ['#fdf4ff', '#a855f7', '#ec4899', '#1e1b4b'], font: 'Nunito' },
-  { id: 'corporate', name: 'Corporate', desc: 'Professional blues, grays', colors: ['#f8fafc', '#1e40af', '#3b82f6', '#1e293b'], font: 'IBM Plex Sans' },
+  { id: 'corporate', name: 'Corporate', desc: 'Professional blues', colors: ['#f8fafc', '#1e40af', '#3b82f6', '#1e293b'], font: 'IBM Plex Sans' },
   { id: 'retro', name: 'Retro', desc: 'Vintage yellows and greens', colors: ['#fefce8', '#854d0e', '#16a34a', '#1c1917'], font: 'Space Mono' },
-  { id: 'glass', name: 'Glassmorphism', desc: 'Frosted glass, blurs, gradients', colors: ['#6366f1', '#8b5cf6', '#06b6d4', '#fff'], font: 'Outfit' },
-  { id: 'neon', name: 'Neon', desc: 'Black bg, electric colors', colors: ['#000', '#39ff14', '#ff0090', '#00f0ff'], font: 'Exo 2' },
+  { id: 'glass', name: 'Glassmorphism', desc: 'Frosted glass effects', colors: ['#6366f1', '#8b5cf6', '#06b6d4', '#ffffff'], font: 'Outfit' },
+  { id: 'neon', name: 'Neon', desc: 'Black bg, electric colors', colors: ['#000000', '#39ff14', '#ff0090', '#00f0ff'], font: 'Exo 2' },
   { id: 'newspaper', name: 'Newspaper', desc: 'Serif fonts, ink on paper', colors: ['#fafaf9', '#1c1917', '#78716c', '#292524'], font: 'Playfair Display' },
-  { id: 'brutalist', name: 'Brutalist', desc: 'Bold borders, raw layout', colors: ['#fff', '#000', '#facc15', '#ef4444'], font: 'Space Grotesk' },
+  { id: 'brutalist', name: 'Brutalist', desc: 'Bold borders, raw layout', colors: ['#ffffff', '#000000', '#facc15', '#ef4444'], font: 'Space Grotesk' },
   { id: 'material', name: 'Material You', desc: 'Google Material Design 3', colors: ['#fef7ff', '#6750a4', '#7965af', '#1c1b1f'], font: 'Roboto' },
-  { id: 'tailwind', name: 'Tailwind UI', desc: 'Tailwind CSS utility-first', colors: ['#f9fafb', '#4f46e5', '#6366f1', '#111827'], font: 'Inter' },
-  { id: 'apple', name: 'Apple HIG', desc: 'iOS-style clean design', colors: ['#f5f5f7', '#000', '#0071e3', '#1d1d1f'], font: 'SF Pro Display' },
-  { id: 'shadcn', name: 'shadcn/ui', desc: 'Radix + Tailwind component system', colors: ['#fff', '#09090b', '#71717a', '#f4f4f5'], font: 'Geist' },
+  { id: 'tailwind', name: 'Tailwind UI', desc: 'Tailwind utility-first', colors: ['#f9fafb', '#4f46e5', '#6366f1', '#111827'], font: 'Inter' },
+  { id: 'apple', name: 'Apple HIG', desc: 'iOS-style clean design', colors: ['#f5f5f7', '#000000', '#0071e3', '#1d1d1f'], font: 'SF Pro Display' },
+  { id: 'shadcn', name: 'shadcn/ui', desc: 'Radix + Tailwind system', colors: ['#ffffff', '#09090b', '#71717a', '#f4f4f5'], font: 'Geist' },
 ];
 
 // ── Framework presets ──────────────────────────────────────────────────────
 const FRAMEWORKS = [
-  { id: 'nextjs', name: 'Next.js', lang: 'TypeScript', template: getNextjsTemplate },
-  { id: 'vite-react', name: 'Vite + React', lang: 'TypeScript', template: getViteTemplate },
-  { id: 'vue', name: 'Vue 3', lang: 'TypeScript', template: getVueTemplate },
-  { id: 'html', name: 'Plain HTML', lang: 'HTML', template: getHtmlTemplate },
+  { id: 'html', name: 'HTML', lang: 'HTML', ext: 'html' },
+  { id: 'react', name: 'React', lang: 'TypeScript', ext: 'tsx' },
+  { id: 'nextjs', name: 'Next.js', lang: 'TypeScript', ext: 'tsx' },
+  { id: 'vue', name: 'Vue 3', lang: 'TypeScript', ext: 'vue' },
 ];
 
-function getNextjsTemplate(preset: typeof DESIGN_PRESETS[0]) {
-  const [bg, primary, accent, text] = preset.colors;
-  return {
-    'app/page.tsx': `'use client';\n\nexport default function Home() {\n  return (\n    <main style={{ background: '${bg}', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '${preset.font}, sans-serif' }}>\n      <div style={{ textAlign: 'center', color: '${text}' }}>\n        <h1 style={{ fontSize: 48, fontWeight: 700, color: '${primary}', marginBottom: 16 }}>Hello World</h1>\n        <p style={{ fontSize: 18, color: '${accent}', marginBottom: 32 }}>Built with Next.js + ${preset.name} design system</p>\n        <button style={{ background: '${primary}', color: '${bg}', padding: '12px 28px', borderRadius: 8, border: 'none', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>Get Started</button>\n      </div>\n    </main>\n  );\n}\n`,
-    'app/layout.tsx': `import type { Metadata } from 'next';\nexport const metadata: Metadata = { title: 'My App', description: 'Built with Nexus Vayu Builder' };\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html lang="en"><body>{children}</body></html>;\n}\n`,
-    'package.json': `{\n  "name": "my-nextjs-app",\n  "version": "0.1.0",\n  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },\n  "dependencies": { "next": "^15.0.0", "react": "^19.0.0", "react-dom": "^19.0.0" },\n  "devDependencies": { "typescript": "^5", "@types/node": "^22", "@types/react": "^19" }\n}\n`,
-    'tsconfig.json': `{\n  "compilerOptions": { "target": "ES2017", "lib": ["dom", "esnext"], "jsx": "preserve", "module": "esnext", "moduleResolution": "bundler", "strict": true, "noEmit": true },\n  "include": ["**/*.ts", "**/*.tsx"]\n}\n`,
-  };
-}
+// ── Build a preview-ready HTML document ───────────────────────────────────
+// For HTML framework: use index.html directly.
+// For React/Next/Vue: wrap components with Babel standalone + CDN React.
+function buildPreviewHtml(files: Record<string, string>, framework: string, preset: typeof DESIGN_PRESETS[0]): string {
+  const [bg, primary, accent, textCol] = preset.colors;
+  const cssEntries = Object.entries(files).filter(([k]) => k.endsWith('.css'));
+  const cssContent = cssEntries.map(([, v]) => v).join('\n');
 
-function getViteTemplate(preset: typeof DESIGN_PRESETS[0]) {
-  const [bg, primary, accent, text] = preset.colors;
-  return {
-    'src/App.tsx': `import './App.css';\nexport default function App() {\n  return (\n    <div className="app">\n      <h1 style={{ color: '${primary}' }}>Hello World</h1>\n      <p style={{ color: '${accent}' }}>Built with Vite + React + ${preset.name}</p>\n      <button>Get Started</button>\n    </div>\n  );\n}\n`,
-    'src/App.css': `.app { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: ${bg}; color: ${text}; font-family: '${preset.font}', sans-serif; } h1 { font-size: 3rem; font-weight: 700; } button { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 1.5rem; }\n`,
-    'src/main.tsx': `import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App';\nReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);\n`,
-    'index.html': `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width" /><title>My App</title></head>\n  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>\n</html>\n`,
-    'package.json': `{\n  "name": "my-vite-app",\n  "version": "0.1.0",\n  "scripts": { "dev": "vite", "build": "vite build" },\n  "dependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },\n  "devDependencies": { "@vitejs/plugin-react": "^4", "typescript": "^5", "vite": "^6" }\n}\n`,
-  };
-}
-
-function getVueTemplate(preset: typeof DESIGN_PRESETS[0]) {
-  const [bg, primary, accent, text] = preset.colors;
-  return {
-    'src/App.vue': `<template>\n  <div class="app">\n    <h1>Hello World</h1>\n    <p>Built with Vue 3 + ${preset.name}</p>\n    <button>Get Started</button>\n  </div>\n</template>\n\n<script setup lang="ts">\n// Your Vue 3 app\n</script>\n\n<style scoped>\n.app { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: ${bg}; color: ${text}; font-family: '${preset.font}', sans-serif; }\nh1 { font-size: 3rem; font-weight: 700; color: ${primary}; }\np { color: ${accent}; }\nbutton { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 1.5rem; }\n</style>\n`,
-    'src/main.ts': `import { createApp } from 'vue';\nimport App from './App.vue';\ncreateApp(App).mount('#app');\n`,
-    'index.html': `<!DOCTYPE html>\n<html lang="en">\n  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width" /><title>My App</title></head>\n  <body><div id="app"></div><script type="module" src="/src/main.ts"></script></body>\n</html>\n`,
-    'package.json': `{\n  "name": "my-vue-app",\n  "scripts": { "dev": "vite", "build": "vite build" },\n  "dependencies": { "vue": "^3.5.0" },\n  "devDependencies": { "@vitejs/plugin-vue": "^5", "typescript": "^5", "vite": "^6" }\n}\n`,
-  };
-}
-
-function getHtmlTemplate(preset: typeof DESIGN_PRESETS[0]) {
-  const [bg, primary, accent, text] = preset.colors;
-  return {
-    'index.html': `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>My App</title>\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: ${bg}; color: ${text}; font-family: '${preset.font}', system-ui, sans-serif; }\n    .container { text-align: center; padding: 2rem; }\n    h1 { font-size: 3rem; font-weight: 700; color: ${primary}; margin-bottom: 1rem; }\n    p { font-size: 1.125rem; color: ${accent}; margin-bottom: 2rem; }\n    button { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity .2s; }\n    button:hover { opacity: 0.85; }\n  </style>\n</head>\n<body>\n  <div class="container">\n    <h1>Hello World</h1>\n    <p>Built with ${preset.name} design system</p>\n    <button onclick="alert('Hello!')">Get Started</button>\n  </div>\n</body>\n</html>\n`,
-    'style.css': `/* Additional styles */\n`,
-    'script.js': `// Your JavaScript here\nconsole.log('App loaded');\n`,
-  };
-}
-
-function getFileIcon(filename: string) {
-  if (filename.endsWith('.tsx') || filename.endsWith('.ts')) return <FileCode size={12} className="text-blue-400" />;
-  if (filename.endsWith('.vue')) return <FileCode size={12} className="text-green-400" />;
-  if (filename.endsWith('.css')) return <Palette size={12} className="text-pink-400" />;
-  if (filename.endsWith('.html')) return <FileText size={12} className="text-orange-400" />;
-  if (filename.endsWith('.json')) return <File size={12} className="text-yellow-400" />;
-  return <File size={12} className="text-gray-400" />;
-}
-
-function getMonacoLang(filename: string): string {
-  if (filename.endsWith('.tsx') || filename.endsWith('.ts')) return 'typescript';
-  if (filename.endsWith('.vue')) return 'html';
-  if (filename.endsWith('.css')) return 'css';
-  if (filename.endsWith('.html')) return 'html';
-  if (filename.endsWith('.json')) return 'json';
-  if (filename.endsWith('.js')) return 'javascript';
-  return 'plaintext';
-}
-
-// ── Build the preview HTML from the file map ───────────────────────────────
-function buildPreviewHtml(files: Record<string, string>, framework: string): string {
-  // For plain HTML, just use index.html directly
   if (framework === 'html') {
-    return files['index.html'] ?? '<p>No index.html found.</p>';
+    const html = files['index.html'] ?? '';
+    // Inject CSS files if present
+    if (cssContent && !html.includes('<style>')) {
+      return html.replace('</head>', `<style>${cssContent}</style></head>`);
+    }
+    return html || `<!DOCTYPE html><html><body style="background:${bg};color:${textCol};font-family:${preset.font},system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><h1 style="color:${primary}">Hello World</h1></body></html>`;
   }
-  // For React/Vue/Next, synthesise a preview from the main component
-  const mainFile =
+
+  // For React/Next/Vue — find the main component file
+  const mainEntry =
     files['src/App.tsx'] ||
-    files['src/App.vue'] ||
+    files['src/App.jsx'] ||
     files['app/page.tsx'] ||
-    Object.values(files)[0] ||
+    files['pages/index.tsx'] ||
+    files['src/App.vue'] ||
+    Object.entries(files).find(([k]) => k.endsWith('.tsx') || k.endsWith('.jsx') || k.endsWith('.vue'))?.[1] ||
     '';
 
-  // Extract JSX/template-like content and styles
-  const cssFile = Object.entries(files).find(([k]) => k.endsWith('.css'))?.[1] ?? '';
-  const [bg, primary, accent, textColor] = ['#fff', '#111', '#666', '#111'];
+  // Strip imports / exports so Babel can run the component standalone
+  let componentCode = mainEntry
+    .replace(/^import\s+.*?from\s+['"][^'"]*['"];?\s*$/gm, '')
+    .replace(/^export\s+default\s+/gm, '')
+    .replace(/^export\s+/gm, '');
 
-  // Simple heuristic: find <main> or return tags from the code and render inline
-  const bodyMatch = mainFile.match(/return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}/);
-  const templateMatch = mainFile.match(/<template>([\s\S]*?)<\/template>/);
-  const content = bodyMatch?.[1] || templateMatch?.[1] || mainFile.slice(0, 2000);
+  // Remove TypeScript type annotations that Babel standalone can't handle well
+  componentCode = componentCode
+    .replace(/:\s*React\.FC(\s*=)/g, '$1')
+    .replace(/<[A-Z][A-Za-z]*>\s*\(/g, '(');
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width" />
-<title>Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Preview — ${preset.name}</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: ${bg}; color: ${textColor}; font-family: system-ui, sans-serif; min-height: 100vh; }
-${cssFile}
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: ${bg}; color: ${textCol}; font-family: '${preset.font}', system-ui, sans-serif; min-height: 100vh; }
+  ${cssContent}
 </style>
 </head>
 <body>
-<div id="root">
-  <div style="padding:2rem; text-align:center; color: ${primary};">
-    <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1rem;">Live Preview</h2>
-    <p style="color:${accent}; font-size:0.875rem;">This preview shows your app layout. Use the Code tab to edit files.</p>
-    <pre style="text-align:left; background:#f5f5f5; padding:1rem; border-radius:8px; margin-top:1rem; overflow:auto; font-size:0.75rem; max-height:400px;">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-  </div>
-</div>
+<div id="root"></div>
+<script type="text/babel" data-presets="react,typescript">
+const { useState, useEffect, useRef, useCallback } = React;
+${componentCode}
+
+// Try to find and render the main component
+const candidates = [
+  typeof App !== 'undefined' ? App : null,
+  typeof Home !== 'undefined' ? Home : null,
+  typeof Page !== 'undefined' ? Page : null,
+  typeof Index !== 'undefined' ? Index : null,
+];
+const Main = candidates.find(Boolean);
+if (Main) {
+  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(Main));
+} else {
+  document.getElementById('root').innerHTML = '<div style="padding:2rem;text-align:center"><p style="color:${primary};font-size:1.2rem;font-weight:600">Component loaded. Define a default export named App, Home, or Page to render it here.</p></div>';
+}
+</script>
 </body>
 </html>`;
 }
 
-// ── Chat message type ──────────────────────────────────────────────────────
+// ── Template generators ────────────────────────────────────────────────────
+function getTemplate(frameworkId: string, preset: typeof DESIGN_PRESETS[0]): Record<string, string> {
+  const [bg, primary, accent, textCol] = preset.colors;
+  const style = `background:${bg};color:${textCol};font-family:'${preset.font}',system-ui,sans-serif`;
+
+  if (frameworkId === 'html') {
+    return {
+      'index.html': `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My App — ${preset.name}</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Hello World</h1>
+    <p>Built with ${preset.name} design system</p>
+    <button onclick="alert('Hello!')">Get Started</button>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>`,
+      'style.css': `* { margin: 0; padding: 0; box-sizing: border-box; }
+body { min-height: 100vh; display: flex; align-items: center; justify-content: center; ${style}; }
+.container { text-align: center; padding: 2rem; }
+h1 { font-size: 3rem; font-weight: 700; color: ${primary}; margin-bottom: 1rem; }
+p { font-size: 1.125rem; color: ${accent}; margin-bottom: 2rem; }
+button { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+button:hover { opacity: 0.85; }`,
+      'script.js': `// JavaScript for ${preset.name} app\nconsole.log('App ready!');`,
+    };
+  }
+
+  if (frameworkId === 'vue') {
+    return {
+      'src/App.vue': `<template>
+  <div class="app">
+    <h1>Hello World</h1>
+    <p>Built with Vue 3 + ${preset.name}</p>
+    <button @click="count++">Count: {{ count }}</button>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+const count = ref(0);
+</script>
+
+<style scoped>
+.app { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; ${style}; }
+h1 { font-size: 3rem; font-weight: 700; color: ${primary}; margin-bottom: 1rem; }
+p { font-size: 1.125rem; color: ${accent}; margin-bottom: 2rem; }
+button { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; }
+button:hover { opacity: 0.85; }
+</style>`,
+      'src/main.ts': `import { createApp } from 'vue';
+import App from './App.vue';
+createApp(App).mount('#app');`,
+      'package.json': `{
+  "name": "my-vue-app",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": { "vue": "^3.5.0" },
+  "devDependencies": { "@vitejs/plugin-vue": "^5", "typescript": "^5", "vite": "^6" }
+}`,
+    };
+  }
+
+  if (frameworkId === 'nextjs') {
+    return {
+      'app/page.tsx': `'use client';
+import { useState } from 'react';
+
+export default function Home() {
+  const [count, setCount] = useState(0);
+  return (
+    <main style={{ ${style}, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center' }}>
+        <h1 style={{ fontSize: 48, fontWeight: 700, color: '${primary}', marginBottom: 16 }}>Hello World</h1>
+        <p style={{ fontSize: 18, color: '${accent}', marginBottom: 32 }}>Built with Next.js + ${preset.name}</p>
+        <button
+          onClick={() => setCount(c => c + 1)}
+          style={{ background: '${primary}', color: '${bg}', padding: '12px 28px', borderRadius: 8, border: 'none', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
+        >
+          Count: {count}
+        </button>
+      </div>
+    </main>
+  );
+}`,
+      'app/layout.tsx': `import type { Metadata } from 'next';
+export const metadata: Metadata = { title: 'My App', description: 'Built with Nexus Vayu Builder' };
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return <html lang="en"><body>{children}</body></html>;
+}`,
+      'package.json': `{
+  "name": "my-nextjs-app",
+  "version": "0.1.0",
+  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "dependencies": { "next": "^15.0.0", "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": { "typescript": "^5", "@types/node": "^22", "@types/react": "^19" }
+}`,
+    };
+  }
+
+  // React (Vite)
+  return {
+    'src/App.tsx': `import { useState } from 'react';
+import './App.css';
+
+export default function App() {
+  const [count, setCount] = useState(0);
+  return (
+    <div className="app">
+      <h1>Hello World</h1>
+      <p>Built with React + ${preset.name}</p>
+      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+    </div>
+  );
+}`,
+    'src/App.css': `.app { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; ${style}; }
+h1 { font-size: 3rem; font-weight: 700; color: ${primary}; margin-bottom: 1rem; }
+p { font-size: 1.125rem; color: ${accent}; margin-bottom: 2rem; }
+button { background: ${primary}; color: ${bg}; padding: 12px 28px; border-radius: 8px; border: none; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+button:hover { opacity: 0.85; }`,
+    'src/main.tsx': `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode><App /></React.StrictMode>
+);`,
+    'index.html': `<!DOCTYPE html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>My App</title></head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+</html>`,
+    'package.json': `{
+  "name": "my-react-app",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": { "@vitejs/plugin-react": "^4", "typescript": "^5", "vite": "^6" }
+}`,
+  };
+}
+
+function getFileIcon(filename: string) {
+  if (filename.endsWith('.tsx') || filename.endsWith('.ts')) return <FileCode size={12} className="text-blue-400 flex-shrink-0" />;
+  if (filename.endsWith('.vue')) return <FileCode size={12} className="text-green-400 flex-shrink-0" />;
+  if (filename.endsWith('.css')) return <Palette size={12} className="text-pink-400 flex-shrink-0" />;
+  if (filename.endsWith('.html')) return <FileText size={12} className="text-orange-400 flex-shrink-0" />;
+  if (filename.endsWith('.json')) return <File size={12} className="text-yellow-400 flex-shrink-0" />;
+  if (filename.endsWith('.js') || filename.endsWith('.jsx')) return <FileCode size={12} className="text-yellow-300 flex-shrink-0" />;
+  return <File size={12} className="text-gray-400 flex-shrink-0" />;
+}
+
+function getMonacoLang(filename: string): string {
+  if (filename.endsWith('.tsx') || filename.endsWith('.ts')) return 'typescript';
+  if (filename.endsWith('.vue') || filename.endsWith('.html')) return 'html';
+  if (filename.endsWith('.css')) return 'css';
+  if (filename.endsWith('.json')) return 'json';
+  if (filename.endsWith('.js') || filename.endsWith('.jsx')) return 'javascript';
+  if (filename.endsWith('.py')) return 'python';
+  return 'plaintext';
+}
+
 interface BuilderMsg {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  images?: string[];
 }
 
-export default function BuilderPage() {
-  const { apiKeys, selectedProvider, customProviders } = useStore();
+// ── GitHub push helper ─────────────────────────────────────────────────────
+async function pushToGitHub(
+  token: string,
+  owner: string,
+  repo: string,
+  files: Record<string, string>,
+  onStatus: (msg: string) => void,
+): Promise<{ success: boolean; url: string }> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
 
-  const [framework, setFramework] = useState('nextjs');
+  // 1. Check if repo exists, create if not
+  onStatus('Checking repository…');
+  const checkRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+  if (!checkRes.ok) {
+    onStatus('Creating repository…');
+    const createRes = await fetch('https://api.github.com/user/repos', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: repo, auto_init: true, private: false }),
+    });
+    if (!createRes.ok) {
+      const err = await createRes.json() as { message?: string };
+      throw new Error(`Failed to create repo: ${err.message ?? createRes.status}`);
+    }
+    // Wait for repo to initialise
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  // 2. Get default branch
+  onStatus('Reading repository…');
+  const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+  const repoData = await repoRes.json() as { default_branch?: string };
+  const branch = repoData.default_branch ?? 'main';
+
+  // 3. Push each file
+  let pushed = 0;
+  for (const [path, content] of Object.entries(files)) {
+    onStatus(`Pushing ${path} (${++pushed}/${Object.keys(files).length})…`);
+
+    // Encode content as base64 (handles unicode)
+    const b64 = btoa(unescape(encodeURIComponent(content)));
+
+    // Get existing SHA if the file already exists
+    let sha: string | undefined;
+    const existRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, { headers });
+    if (existRes.ok) {
+      const existData = await existRes.json() as { sha?: string };
+      sha = existData.sha;
+    }
+
+    const putRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: `Add ${path} via Nexus Vayu Builder`,
+        content: b64,
+        branch,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+
+    if (!putRes.ok) {
+      const err = await putRes.json() as { message?: string };
+      throw new Error(`Failed to push ${path}: ${err.message ?? putRes.status}`);
+    }
+  }
+
+  return { success: true, url: `https://github.com/${owner}/${repo}` };
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+export default function BuilderPage() {
+  const { apiKeys, selectedProvider } = useStore();
+
+  const [framework, setFramework] = useState('react');
   const [selectedPreset, setSelectedPreset] = useState(DESIGN_PRESETS[0]);
-  const [files, setFiles] = useState<Record<string, string>>(() =>
-    getNextjsTemplate(DESIGN_PRESETS[0])
-  );
-  const [activeFile, setActiveFile] = useState('app/page.tsx');
+  const [files, setFiles] = useState<Record<string, string>>(() => getTemplate('react', DESIGN_PRESETS[0]));
+  const [activeFile, setActiveFile] = useState('src/App.tsx');
   const [messages, setMessages] = useState<BuilderMsg[]>([]);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'code' | 'preview'>('chat');
+  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [temperature, setTemperature] = useState(0.7);
+  const [showSettings, setShowSettings] = useState(false);
   const [showPresetPicker, setShowPresetPicker] = useState(false);
   const [showFrameworkPicker, setShowFrameworkPicker] = useState(false);
-  const [temperature, setTemperature] = useState(0.7);
-  const [selectedBuilderModel, setSelectedBuilderModel] = useState('');
+
+  // GitHub state
   const [githubToken, setGithubToken] = useState('');
+  const [githubOwner, setGithubOwner] = useState('');
   const [githubRepo, setGithubRepo] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
-  const [publishMsg, setPublishMsg] = useState('');
-  const [showGithubPanel, setShowGithubPanel] = useState(false);
+  const [publishStatus, setPublishStatus] = useState('');
+  const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
+  const [showGithub, setShowGithub] = useState(false);
+
+  // Attachments
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Infer API key for current provider
   const apiKey = apiKeys[selectedProvider] ?? '';
 
-  // Scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Apply framework template on change
   const applyFramework = useCallback((fwId: string, preset: typeof DESIGN_PRESETS[0]) => {
-    const fw = FRAMEWORKS.find((f) => f.id === fwId) ?? FRAMEWORKS[0];
-    const newFiles = fw.template(preset);
+    const newFiles = getTemplate(fwId, preset);
     setFiles(newFiles);
     setActiveFile(Object.keys(newFiles)[0]);
   }, []);
@@ -210,34 +430,41 @@ export default function BuilderPage() {
     setShowFrameworkPicker(false);
   };
 
-  // Send AI prompt and apply generated code to files
+  // Build preview HTML — recomputed only when files or framework change
+  const previewHtml = useMemo(
+    () => buildPreviewHtml(files, framework, selectedPreset),
+    [files, framework, selectedPreset],
+  );
+
+  // ── AI send ──────────────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     if (!input.trim() || isGenerating) return;
-    const userMsg: BuilderMsg = { id: Date.now().toString(), role: 'user', content: input.trim() };
+    const imgs = [...attachedImages];
+    const userMsg: BuilderMsg = { id: Date.now().toString(), role: 'user', content: input.trim(), images: imgs };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
+    setAttachedImages([]);
     setIsGenerating(true);
 
     const fw = FRAMEWORKS.find((f) => f.id === framework) ?? FRAMEWORKS[0];
     const fileList = Object.entries(files)
-      .map(([name, code]) => `## ${name}\n\`\`\`\n${code}\n\`\`\``)
+      .map(([name, code]) => `## ${name}\n\`\`\`${getMonacoLang(name)}\n${code}\n\`\`\``)
       .join('\n\n');
 
-    const systemPrompt = `You are an expert full-stack developer specializing in ${fw.name} (${fw.lang}). 
+    const systemPrompt = `You are an expert full-stack developer specializing in ${fw.name} (${fw.lang}).
 The user is building an app using the "${selectedPreset.name}" design system.
-Design colors: bg=${selectedPreset.colors[0]}, primary=${selectedPreset.colors[1]}, accent=${selectedPreset.colors[2]}, text=${selectedPreset.colors[3]}
-Font: ${selectedPreset.font}
+Colors — bg: ${selectedPreset.colors[0]}, primary: ${selectedPreset.colors[1]}, accent: ${selectedPreset.colors[2]}, text: ${selectedPreset.colors[3]}.
+Font: ${selectedPreset.font}.
 
-Current files:
+Current project files:
 ${fileList}
 
-When the user asks for changes, respond with the complete updated file contents in this exact format:
-<file name="FILENAME">
-COMPLETE FILE CONTENT HERE
-</file>
-
-You MUST include the full file content — never truncate. After the file blocks, briefly explain what you changed.
-Only include files that changed. Maintain consistency with the ${selectedPreset.name} design system.`;
+Rules:
+1. When you modify files, wrap the FULL file content in: <file name="FILENAME">CONTENT</file>
+2. NEVER truncate file content — always include the complete file.
+3. Only include files that changed.
+4. After the file blocks, write a short explanation of what you changed.
+5. Keep the ${selectedPreset.name} design system colors and font.`;
 
     try {
       const res = await fetch('/api/chat', {
@@ -247,55 +474,44 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
           message: userMsg.content,
           provider: selectedProvider,
           apiKey,
-          history: messages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
+          history: messages.slice(-8).map((m) => ({ role: m.role, content: m.content })),
           systemPrompt,
           temperature,
           maxTokens: 8192,
-          model: selectedBuilderModel || undefined,
+          images: imgs.length > 0 ? imgs : undefined,
         }),
       });
-      const data = await res.json() as { content?: string };
-      const aiContent = data.content ?? 'No response.';
+      const data = await res.json() as { content?: string; error?: string };
+      const aiContent = data.content ?? data.error ?? 'No response.';
 
-      // Parse <file name="...">...</file> blocks and update the file map
+      // Parse <file name="...">...</file> blocks
       const fileRegex = /<file\s+name="([^"]+)">([\s\S]*?)<\/file>/g;
       let match;
-      let updatedAny = false;
       const newFiles = { ...files };
+      let updatedAny = false;
       while ((match = fileRegex.exec(aiContent)) !== null) {
         const [, fname, fcontent] = match;
-        newFiles[fname.trim()] = fcontent.trim();
+        newFiles[fname.trim()] = fcontent.replace(/^\n/, '').replace(/\n$/, '');
         updatedAny = true;
       }
 
-      // Also catch markdown code blocks with filenames in comments
-      if (!updatedAny) {
-        const mdRegex = /```(?:\w+)?\s*\/\/ ([^\n]+)\n([\s\S]*?)```/g;
-        while ((match = mdRegex.exec(aiContent)) !== null) {
-          const [, fname, fcontent] = match;
-          if (fname.includes('.')) {
-            newFiles[fname.trim()] = fcontent.trim();
-            updatedAny = true;
-          }
-        }
+      if (updatedAny) {
+        setFiles(newFiles);
+        // Switch to preview after code is updated
+        setActiveTab('preview');
+        setActiveFile(Object.keys(newFiles).find((k) => k === activeFile) ?? Object.keys(newFiles)[0]);
       }
 
-      if (updatedAny) setFiles(newFiles);
-
-      const aiMsg: BuilderMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: aiContent };
-      setMessages((prev) => [...prev, aiMsg]);
-
-      // Auto-switch to code tab if files were updated
-      if (updatedAny) setActiveTab('code');
+      setMessages((prev) => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: aiContent }]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: `Error: ${msg}` }]);
     } finally {
       setIsGenerating(false);
     }
-  }, [input, isGenerating, files, framework, selectedPreset, selectedProvider, apiKey, messages, temperature, selectedBuilderModel]);
+  }, [input, isGenerating, files, framework, selectedPreset, selectedProvider, apiKey, messages, temperature, attachedImages, activeFile]);
 
-  // Download as ZIP
+  // ── Download ZIP ──────────────────────────────────────────────────────────
   const handleDownload = useCallback(async () => {
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
@@ -304,218 +520,323 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'my-app.zip';
+    a.download = `${githubRepo || 'my-app'}.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [files]);
+  }, [files, githubRepo]);
 
-  // Publish to GitHub
-  const handleGithubPublish = useCallback(async () => {
-    if (!githubToken || !githubRepo) {
-      setPublishMsg('Enter a GitHub token and repo name (e.g. username/repo)');
-      return;
-    }
+  // ── GitHub publish ────────────────────────────────────────────────────────
+  const handlePublish = useCallback(async () => {
+    if (!githubToken.trim()) { setPublishStatus('Please enter your GitHub Personal Access Token.'); return; }
+    const repoName = githubRepo.trim() || 'my-nexus-app';
+    // Determine owner from token — call /user to get login
     setIsPublishing(true);
-    setPublishMsg('');
+    setPublishStatus('');
+    setPublishSuccess(null);
     try {
-      const [owner, repo] = githubRepo.split('/');
-      // Create repo if needed
-      await fetch('https://api.github.com/user/repos', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${githubToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: repo, auto_init: true }),
-      });
-      // Push each file
-      for (const [path, content] of Object.entries(files)) {
-        const b64 = btoa(unescape(encodeURIComponent(content)));
-        // Check if file exists to get sha
-        const existing = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-          headers: { Authorization: `Bearer ${githubToken}` },
+      let owner = githubOwner.trim();
+      if (!owner) {
+        const userRes = await fetch('https://api.github.com/user', {
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' },
         });
-        const existingJson = existing.ok ? await existing.json() as { sha?: string } : null;
-
-        await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${githubToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Add ${path} via Nexus Vayu Builder`,
-            content: b64,
-            ...(existingJson?.sha ? { sha: existingJson.sha } : {}),
-          }),
-        });
+        if (!userRes.ok) throw new Error('Invalid token or network error — could not fetch GitHub user.');
+        const userData = await userRes.json() as { login?: string };
+        owner = userData.login ?? '';
+        if (!owner) throw new Error('Could not determine GitHub username from token.');
+        setGithubOwner(owner);
       }
-      setPublishMsg(`Published to https://github.com/${githubRepo}`);
+
+      const result = await pushToGitHub(githubToken, owner, repoName, files, setPublishStatus);
+      setPublishSuccess(result.url);
+      setPublishStatus('');
     } catch (err) {
-      setPublishMsg(`Error: ${err instanceof Error ? err.message : 'Unknown'}`);
+      setPublishStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsPublishing(false);
     }
-  }, [githubToken, githubRepo, files]);
+  }, [githubToken, githubOwner, githubRepo, files]);
 
-  const previewHtml = buildPreviewHtml(files, framework);
+  // ── Attach images ─────────────────────────────────────────────────────────
+  const handleImageAttach = (fl: FileList | null) => {
+    if (!fl) return;
+    Array.from(fl).forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = (e) => setAttachedImages((prev) => [...prev, e.target?.result as string]);
+      reader.readAsDataURL(f);
+    });
+  };
+
+  // ── Import code files into the editor ────────────────────────────────────
+  const handleCodeImport = (fl: FileList | null) => {
+    if (!fl) return;
+    Array.from(fl).forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setFiles((prev) => ({ ...prev, [f.name]: content }));
+        setActiveFile(f.name);
+      };
+      reader.readAsText(f);
+    });
+  };
+
+  // ── Import entire GitHub repo (single file reference) ────────────────────
+  const handleGithubImport = useCallback(async () => {
+    const repoUrl = prompt('Enter GitHub repo URL (e.g. https://github.com/owner/repo):');
+    if (!repoUrl) return;
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/\s]+)/);
+    if (!match) { alert('Invalid GitHub URL.'); return; }
+    const [, owner, repo] = match;
+    try {
+      const headers: Record<string, string> = githubToken ? { Authorization: `Bearer ${githubToken}` } : {};
+      const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, { headers });
+      if (!treeRes.ok) throw new Error('Could not fetch repo tree. Make sure it is public or token has access.');
+      const treeData = await treeRes.json() as { tree?: { path?: string; type?: string }[] };
+      const codeExts = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.css', '.html', '.json', '.py', '.md'];
+      const codeFiles = (treeData.tree ?? [])
+        .filter((f) => f.type === 'blob' && f.path && codeExts.some((e) => f.path!.endsWith(e)))
+        .slice(0, 30); // cap at 30 files
+
+      const fetched: Record<string, string> = {};
+      await Promise.all(
+        codeFiles.map(async (f) => {
+          const raw = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${f.path}`, { headers });
+          if (raw.ok) fetched[f.path!] = await raw.text();
+        })
+      );
+      if (Object.keys(fetched).length === 0) throw new Error('No code files found.');
+      setFiles(fetched);
+      setActiveFile(Object.keys(fetched)[0]);
+      setMessages((prev) => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Imported ${Object.keys(fetched).length} files from ${owner}/${repo}. You can now ask me to modify them.`,
+      }]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Import failed.');
+    }
+  }, [githubToken]);
+
   const previewWidth = previewMode === 'desktop' ? '100%' : previewMode === 'tablet' ? 768 : 375;
+  const fw = FRAMEWORKS.find((f) => f.id === framework) ?? FRAMEWORKS[0];
 
   return (
-    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-800 bg-gray-900 flex-shrink-0">
-        <Link href="/" className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
+    <div className="h-screen bg-[#0d0d18] text-white flex flex-col overflow-hidden">
+      {/* ── Header ── */}
+      <header className="flex items-center gap-2 px-3 py-2 border-b border-white/8 bg-[#0f0f20] flex-shrink-0">
+        <Link href="/" className="p-1.5 rounded-xl hover:bg-white/8 text-white/40 hover:text-white transition-colors flex-shrink-0">
           <ArrowLeft size={16} />
         </Link>
-        <div className="flex items-center gap-2">
-          <Code2 size={18} className="text-orange-400" />
-          <span className="font-bold text-sm">App Builder</span>
-          <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">Beta</span>
-        </div>
 
-        <div className="flex items-center gap-2 ml-2">
-          {/* Framework selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowFrameworkPicker(!showFrameworkPicker)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium transition-colors"
-            >
-              <Zap size={11} className="text-yellow-400" />
-              {FRAMEWORKS.find((f) => f.id === framework)?.name}
-              <ChevronRight size={10} className="text-gray-500 rotate-90" />
-            </button>
-            <AnimatePresence>
-              {showFrameworkPicker && (
+        <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center flex-shrink-0">
+          <Code2 size={12} className="text-white" />
+        </div>
+        <span className="font-bold text-sm text-white">App Builder</span>
+
+        {/* Framework */}
+        <div className="relative ml-2">
+          <button
+            onClick={() => { setShowFrameworkPicker((v) => !v); setShowPresetPicker(false); }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/6 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-medium transition-colors"
+          >
+            <Zap size={11} className="text-yellow-400" />
+            {fw.name}
+            <ChevronDown size={10} className="text-white/30" />
+          </button>
+          <AnimatePresence>
+            {showFrameworkPicker && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowFrameworkPicker(false)} />
                 <motion.div
-                  initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                  className="absolute top-full mt-1 left-0 bg-gray-800 border border-gray-700 rounded-xl p-1 z-50 min-w-[140px] shadow-xl"
+                  initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute top-full mt-1.5 left-0 bg-[#1a1a2e] border border-white/10 rounded-2xl shadow-2xl z-50 p-1.5 min-w-[140px] overflow-hidden"
                 >
-                  {FRAMEWORKS.map((fw) => (
+                  {FRAMEWORKS.map((f) => (
                     <button
-                      key={fw.id}
-                      onClick={() => handleFrameworkChange(fw.id)}
-                      className={cn('w-full text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2', fw.id === framework ? 'bg-orange-500/20 text-orange-400' : 'hover:bg-gray-700 text-gray-300')}
+                      key={f.id}
+                      onClick={() => handleFrameworkChange(f.id)}
+                      className={cn('w-full text-left px-3 py-2 text-xs rounded-xl transition-colors flex items-center justify-between gap-2',
+                        f.id === framework ? 'bg-orange-500/20 text-orange-300' : 'text-white/60 hover:bg-white/6 hover:text-white')}
                     >
-                      {fw.name}
-                      <span className="text-[9px] text-gray-500">{fw.lang}</span>
+                      <span className="font-medium">{f.name}</span>
+                      <span className="text-white/25 text-[10px]">{f.lang}</span>
                     </button>
                   ))}
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
 
-          {/* Design preset selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowPresetPicker(!showPresetPicker)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium transition-colors"
-            >
-              <div className="flex gap-0.5">
-                {selectedPreset.colors.slice(0, 3).map((c, i) => (
-                  <div key={i} className="w-2.5 h-2.5 rounded-full border border-gray-600" style={{ background: c }} />
-                ))}
-              </div>
-              {selectedPreset.name}
-              <ChevronRight size={10} className="text-gray-500 rotate-90" />
-            </button>
-            <AnimatePresence>
-              {showPresetPicker && (
+        {/* Design preset */}
+        <div className="relative">
+          <button
+            onClick={() => { setShowPresetPicker((v) => !v); setShowFrameworkPicker(false); }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/6 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-medium transition-colors"
+          >
+            <div className="flex gap-0.5">
+              {selectedPreset.colors.slice(0, 3).map((c, i) => (
+                <div key={i} className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: c }} />
+              ))}
+            </div>
+            {selectedPreset.name}
+            <ChevronDown size={10} className="text-white/30" />
+          </button>
+          <AnimatePresence>
+            {showPresetPicker && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowPresetPicker(false)} />
                 <motion.div
-                  initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                  className="absolute top-full mt-1 left-0 bg-gray-800 border border-gray-700 rounded-xl p-2 z-50 w-72 shadow-xl grid grid-cols-2 gap-1"
+                  initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute top-full mt-1.5 left-0 bg-[#1a1a2e] border border-white/10 rounded-2xl shadow-2xl z-50 p-2 w-72 grid grid-cols-2 gap-1.5 overflow-hidden"
                 >
-                  {DESIGN_PRESETS.map((preset) => (
+                  {DESIGN_PRESETS.map((p) => (
                     <button
-                      key={preset.id}
-                      onClick={() => handlePresetChange(preset)}
-                      className={cn('text-left px-2.5 py-2 rounded-lg transition-colors', preset.id === selectedPreset.id ? 'bg-orange-500/20 border border-orange-500/40' : 'hover:bg-gray-700')}
+                      key={p.id}
+                      onClick={() => handlePresetChange(p)}
+                      className={cn('text-left px-2.5 py-2 rounded-xl transition-colors border',
+                        p.id === selectedPreset.id ? 'border-orange-500/40 bg-orange-500/10' : 'border-transparent hover:bg-white/6 hover:border-white/10')}
                     >
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        {preset.colors.slice(0, 4).map((c, i) => (
+                      <div className="flex gap-1 mb-1">
+                        {p.colors.map((c, i) => (
                           <div key={i} className="w-2 h-2 rounded-full" style={{ background: c, border: '1px solid rgba(255,255,255,0.1)' }} />
                         ))}
                       </div>
-                      <div className="text-[11px] font-semibold text-white">{preset.name}</div>
-                      <div className="text-[9px] text-gray-400 truncate">{preset.font}</div>
+                      <div className="text-[11px] font-semibold text-white/90">{p.name}</div>
+                      <div className="text-[9px] text-white/30 truncate">{p.font}</div>
                     </button>
                   ))}
                 </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex-1" />
+
+        {/* Actions */}
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setShowGithubPanel(!showGithubPanel)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium transition-colors"
+            onClick={handleGithubImport}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/6 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-white/60 hover:text-white transition-colors"
+            title="Import from GitHub"
           >
-                <GitBranch size={13} />
-            Publish
+            <FolderOpen size={12} /> Import
+          </button>
+          <button
+            onClick={() => setShowGithub((v) => !v)}
+            className={cn('flex items-center gap-1.5 px-2.5 py-1.5 border rounded-xl text-xs font-medium transition-colors',
+              showGithub ? 'bg-white/10 border-white/20 text-white' : 'bg-white/6 border-white/10 text-white/60 hover:text-white hover:bg-white/10')}
+          >
+            <GitBranch size={12} /> Publish
           </button>
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 rounded-lg text-xs font-semibold text-white transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-500 hover:bg-orange-400 rounded-xl text-xs font-semibold text-white transition-colors shadow-md shadow-orange-500/20"
           >
-            <Download size={13} />
-            Download
+            <Download size={12} /> ZIP
           </button>
         </div>
       </header>
 
-      {/* GitHub panel */}
+      {/* ── GitHub panel ── */}
       <AnimatePresence>
-        {showGithubPanel && (
+        {showGithub && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="bg-gray-900 border-b border-gray-800 overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="bg-[#0f0f20] border-b border-white/8 overflow-hidden flex-shrink-0"
           >
-            <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
-              <GitBranch size={14} className="text-gray-400 flex-shrink-0" />
-              <input
-                type="password"
-                placeholder="GitHub Personal Access Token (repo scope)"
-                value={githubToken}
-                onChange={(e) => setGithubToken(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-gray-500 w-64 font-mono"
-              />
-              <input
-                type="text"
-                placeholder="username/repo-name"
-                value={githubRepo}
-                onChange={(e) => setGithubRepo(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-gray-500 w-48 font-mono"
-              />
-              <button
-                onClick={handleGithubPublish}
-                disabled={isPublishing}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg text-xs font-semibold text-white transition-colors"
-              >
-                {isPublishing ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
-                {isPublishing ? 'Publishing…' : 'Push to GitHub'}
-              </button>
-              {publishMsg && <span className={cn('text-xs', publishMsg.startsWith('Error') ? 'text-red-400' : 'text-green-400')}>{publishMsg}</span>}
-              <button onClick={() => setShowGithubPanel(false)} className="ml-auto text-gray-500 hover:text-gray-300">
-                <X size={14} />
-              </button>
+            <div className="px-4 py-3 space-y-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <GitBranch size={13} className="text-white/30 flex-shrink-0" />
+                <input
+                  type="password"
+                  placeholder="GitHub Personal Access Token (needs repo scope)"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  className="bg-white/6 border border-white/10 focus:border-white/25 rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono placeholder-white/25 w-72"
+                />
+                <input
+                  type="text"
+                  placeholder="username (auto-detected if blank)"
+                  value={githubOwner}
+                  onChange={(e) => setGithubOwner(e.target.value)}
+                  className="bg-white/6 border border-white/10 focus:border-white/25 rounded-xl px-3 py-1.5 text-xs text-white outline-none placeholder-white/25 w-44"
+                />
+                <input
+                  type="text"
+                  placeholder="repo-name"
+                  value={githubRepo}
+                  onChange={(e) => setGithubRepo(e.target.value)}
+                  className="bg-white/6 border border-white/10 focus:border-white/25 rounded-xl px-3 py-1.5 text-xs text-white outline-none placeholder-white/25 w-36"
+                />
+                <button
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl text-xs font-semibold text-white transition-colors"
+                >
+                  {isPublishing
+                    ? <><span className="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Pushing…</>
+                    : <><Check size={12} /> Push to GitHub</>
+                  }
+                </button>
+                <button onClick={() => setShowGithub(false)} className="ml-auto text-white/25 hover:text-white/60">
+                  <X size={14} />
+                </button>
+              </div>
+              {publishStatus && (
+                <div className={cn('flex items-center gap-2 text-xs px-1', publishStatus.startsWith('Error') ? 'text-rose-400' : 'text-white/50')}>
+                  {publishStatus.startsWith('Error') && <AlertCircle size={11} />}
+                  {publishStatus}
+                </div>
+              )}
+              {publishSuccess && (
+                <div className="flex items-center gap-2 text-xs text-emerald-400 px-1">
+                  <Check size={11} />
+                  Published!{' '}
+                  <a href={publishSuccess} target="_blank" rel="noreferrer" className="underline hover:text-emerald-300">
+                    {publishSuccess}
+                  </a>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main 3-panel layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: AI Chat */}
-        <div className="w-80 flex-shrink-0 border-r border-gray-800 flex flex-col bg-gray-900">
+      {/* ── Main layout: chat + editor/preview ── */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* ── Left: AI Chat ── */}
+        <div className="w-72 flex-shrink-0 border-r border-white/8 flex flex-col bg-[#0f0f20]">
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.length === 0 && (
-              <div className="text-center py-8">
-                <Sparkles size={28} className="text-orange-400 mx-auto mb-3" />
+              <div className="text-center py-8 px-2">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 flex items-center justify-center mx-auto mb-3">
+                  <Sparkles size={18} className="text-white" />
+                </div>
                 <p className="text-sm font-semibold text-white mb-1">AI App Builder</p>
-                <p className="text-xs text-gray-500 mb-4">Describe what you want to build</p>
-                <div className="grid gap-2">
-                  {['Add a hero section with CTA', 'Create a pricing table', 'Build a login form', 'Add dark mode toggle'].map((s) => (
+                <p className="text-xs text-white/30 mb-5">Describe what you want to build or modify</p>
+                <div className="space-y-2">
+                  {[
+                    'Add a hero section with CTA button',
+                    'Create a dark mode toggle',
+                    'Add an animated pricing table',
+                    'Build a contact form with validation',
+                  ].map((s) => (
                     <button
                       key={s}
                       onClick={() => setInput(s)}
-                      className="text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-xl text-xs text-gray-300 transition-colors border border-gray-700"
+                      className="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/8 hover:border-white/15 rounded-xl text-xs text-white/50 hover:text-white/80 transition-colors"
                     >
                       {s}
                     </button>
@@ -523,23 +844,47 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
                 </div>
               </div>
             )}
+
             {messages.map((msg) => (
               <div key={msg.id} className={cn('flex gap-2', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
-                <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5', msg.role === 'user' ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-200')}>
+                <div className={cn(
+                  'w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5 text-white',
+                  msg.role === 'user' ? 'bg-orange-500' : 'bg-white/10',
+                )}>
                   {msg.role === 'user' ? 'U' : 'AI'}
                 </div>
-                <div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed', msg.role === 'user' ? 'bg-orange-500/20 text-orange-100 rounded-tr-sm' : 'bg-gray-800 text-gray-200 rounded-tl-sm')}>
-                  <pre className="whitespace-pre-wrap font-sans">{msg.content.slice(0, 600)}{msg.content.length > 600 ? '…' : ''}</pre>
+                <div className={cn(
+                  'max-w-[88%] rounded-2xl px-3 py-2 text-xs leading-relaxed',
+                  msg.role === 'user'
+                    ? 'bg-orange-500/15 text-orange-100 rounded-tr-sm'
+                    : 'bg-white/6 text-white/80 rounded-tl-sm border border-white/6',
+                )}>
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {msg.images.map((src, i) => (
+                        <img key={i} src={src} alt="" className="w-14 h-14 rounded-lg object-cover border border-white/10" />
+                      ))}
+                    </div>
+                  )}
+                  <pre className="whitespace-pre-wrap font-sans break-words">
+                    {msg.content.length > 500 ? msg.content.slice(0, 500) + '…' : msg.content}
+                  </pre>
                 </div>
               </div>
             ))}
+
             {isGenerating && (
               <div className="flex gap-2">
-                <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-[9px] font-bold">AI</div>
-                <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-3 py-2">
+                <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-bold text-white/50">AI</div>
+                <div className="bg-white/6 border border-white/6 rounded-2xl rounded-tl-sm px-3 py-2.5">
                   <div className="flex gap-1">
                     {[0, 1, 2].map((i) => (
-                      <motion.div key={i} animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, delay: i * 0.2, repeat: Infinity }} className="w-1.5 h-1.5 bg-gray-400 rounded-full" />
+                      <motion.div
+                        key={i}
+                        className="w-1.5 h-1.5 bg-orange-400 rounded-full"
+                        animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
+                        transition={{ duration: 1.2, delay: i * 0.18, repeat: Infinity }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -549,15 +894,53 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
           </div>
 
           {/* Settings row */}
-          <div className="px-3 py-2 border-t border-gray-800 flex items-center gap-2">
-            <span className="text-[9px] text-gray-500">Temp</span>
-            <input type="range" min={0} max={1} step={0.05} value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} className="flex-1 h-1 accent-orange-500" />
-            <span className="text-[9px] text-gray-400 w-6">{temperature.toFixed(1)}</span>
+          <div className="px-3 py-2 border-t border-white/6">
+            <button
+              onClick={() => setShowSettings((v) => !v)}
+              className="flex items-center gap-2 w-full text-left text-xs text-white/30 hover:text-white/60 transition-colors py-1"
+            >
+              <Settings size={11} />
+              <span>Temperature: {temperature.toFixed(1)}</span>
+            </button>
+            {showSettings && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="range" min={0} max={1} step={0.05}
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                  className="flex-1 h-1 accent-orange-400"
+                />
+                <span className="text-[10px] text-orange-400 font-mono w-6 text-right">{temperature.toFixed(1)}</span>
+              </div>
+            )}
           </div>
 
           {/* Chat input */}
-          <div className="p-3 border-t border-gray-800">
-            <div className="flex gap-2 bg-gray-800 border border-gray-700 rounded-2xl px-3 py-2 focus-within:border-gray-500 transition-colors">
+          <div className="p-3 border-t border-white/6">
+            {/* Attached images preview */}
+            {attachedImages.length > 0 && (
+              <div className="flex gap-1.5 mb-2 flex-wrap">
+                {attachedImages.map((src, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={src} alt="" className="w-12 h-12 object-cover rounded-lg border border-white/10" />
+                    <button
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-white/90 text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={7} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Hidden file inputs */}
+            <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={(e) => { handleImageAttach(e.target.files); if (imageInputRef.current) imageInputRef.current.value = ''; }} />
+            <input ref={codeInputRef} type="file" accept=".ts,.tsx,.js,.jsx,.py,.go,.rs,.css,.html,.json,.md,.vue,.txt" multiple className="hidden"
+              onChange={(e) => { handleCodeImport(e.target.files); if (codeInputRef.current) codeInputRef.current.value = ''; }} />
+
+            <div className="bg-white/5 border border-white/10 focus-within:border-white/20 rounded-2xl px-3 py-2 transition-colors">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -571,67 +954,90 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
                 placeholder="Describe changes… (⌘+Enter)"
                 rows={2}
                 disabled={isGenerating}
-                className="flex-1 bg-transparent text-xs text-white placeholder-gray-500 outline-none resize-none"
+                className="w-full bg-transparent text-xs text-white/90 placeholder-white/25 outline-none resize-none"
               />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isGenerating}
-                className="self-end p-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-30 rounded-xl text-white transition-colors"
-              >
-                {isGenerating ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
-              </button>
+              <div className="flex items-center justify-between mt-1.5">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    className="p-1 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/8 transition-colors"
+                    title="Attach image"
+                  >
+                    <ImageIcon size={12} />
+                  </button>
+                  <button
+                    onClick={() => codeInputRef.current?.click()}
+                    className="p-1 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/8 transition-colors"
+                    title="Import code file into editor"
+                  >
+                    <FileCode size={12} />
+                  </button>
+                </div>
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isGenerating}
+                  className="p-1.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-30 rounded-xl text-white transition-colors"
+                >
+                  {isGenerating ? <RefreshCw size={12} className="animate-spin" /> : <Send size={12} />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right: Code Editor + Preview */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* ── Right: Editor + Preview ── */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Tab bar */}
-          <div className="flex items-center border-b border-gray-800 bg-gray-900 px-2 flex-shrink-0">
+          <div className="flex items-center border-b border-white/8 bg-[#0f0f20] px-2 flex-shrink-0">
             {(['code', 'preview'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={cn('flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium capitalize transition-colors border-b-2', activeTab === tab ? 'text-white border-orange-500' : 'text-gray-500 border-transparent hover:text-gray-300')}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium capitalize transition-colors border-b-2',
+                  activeTab === tab ? 'text-white border-orange-500' : 'text-white/35 border-transparent hover:text-white/70',
+                )}
               >
                 {tab === 'code' ? <Code2 size={12} /> : <Eye size={12} />}
-                {tab}
+                {tab === 'code' ? 'Code' : 'Preview'}
               </button>
             ))}
 
             {activeTab === 'preview' && (
-              <div className="ml-auto flex items-center gap-1 mr-2">
+              <div className="ml-auto flex items-center gap-0.5 mr-2">
                 {([['desktop', Monitor], ['tablet', Tablet], ['mobile', Smartphone]] as const).map(([mode, Icon]) => (
                   <button
                     key={mode}
                     onClick={() => setPreviewMode(mode)}
-                    className={cn('p-1.5 rounded-lg transition-colors', previewMode === mode ? 'text-orange-400 bg-orange-500/10' : 'text-gray-500 hover:text-gray-300')}
+                    className={cn('p-1.5 rounded-lg transition-colors', previewMode === mode ? 'text-orange-400 bg-orange-500/10' : 'text-white/25 hover:text-white/60')}
                   >
                     <Icon size={14} />
                   </button>
                 ))}
+                <button
+                  onClick={() => setActiveTab('code')}
+                  className="ml-2 p-1.5 rounded-lg text-white/25 hover:text-white/60 transition-colors"
+                  title="Back to code"
+                >
+                  <Code2 size={14} />
+                </button>
               </div>
             )}
 
             {activeTab === 'code' && (
               <div className="ml-auto flex items-center gap-2 mr-2">
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(files[activeFile] ?? '');
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-gray-400 hover:text-white transition-colors"
+                  onClick={() => { navigator.clipboard.writeText(files[activeFile] ?? ''); }}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-white/30 hover:text-white/70 transition-colors"
                 >
                   <Copy size={10} /> Copy
                 </button>
                 <button
                   onClick={() => {
-                    const newName = prompt('New file name (e.g. src/components/Button.tsx):');
-                    if (newName && newName.trim()) {
-                      setFiles((f) => ({ ...f, [newName.trim()]: '// New file\n' }));
-                      setActiveFile(newName.trim());
-                    }
+                    const name = prompt('New file name (e.g. src/components/Button.tsx):');
+                    if (name?.trim()) { setFiles((f) => ({ ...f, [name.trim()]: '' })); setActiveFile(name.trim()); }
                   }}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-gray-400 hover:text-white transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-white/30 hover:text-white/70 transition-colors"
                 >
                   <Plus size={10} /> New file
                 </button>
@@ -639,15 +1045,20 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
             )}
           </div>
 
+          {/* Code editor panel */}
           {activeTab === 'code' && (
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* File tree */}
-              <div className="w-44 flex-shrink-0 border-r border-gray-800 bg-gray-900 overflow-y-auto py-2">
+              <div className="w-44 flex-shrink-0 border-r border-white/6 bg-[#0b0b18] overflow-y-auto py-2">
+                <div className="px-3 py-1 text-[10px] text-white/20 font-semibold uppercase tracking-wider mb-1">Files</div>
                 {Object.keys(files).map((fname) => (
                   <button
                     key={fname}
                     onClick={() => setActiveFile(fname)}
-                    className={cn('w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-[11px] transition-colors group', activeFile === fname ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200')}
+                    className={cn(
+                      'w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-[11px] transition-colors group',
+                      activeFile === fname ? 'bg-white/8 text-white' : 'text-white/40 hover:bg-white/5 hover:text-white/70',
+                    )}
                   >
                     {getFileIcon(fname)}
                     <span className="truncate flex-1">{fname.split('/').pop()}</span>
@@ -659,7 +1070,7 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
                           setFiles((f) => { const n = { ...f }; delete n[fname]; return n; });
                           if (activeFile === fname && next) setActiveFile(next);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-rose-400 transition-all flex-shrink-0"
                       >
                         <Trash2 size={9} />
                       </button>
@@ -667,9 +1078,11 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
                   </button>
                 ))}
               </div>
+
               {/* Monaco editor */}
               <div className="flex-1 overflow-hidden">
                 <MonacoEditor
+                  key={activeFile}
                   height="100%"
                   language={getMonacoLang(activeFile)}
                   value={files[activeFile] ?? ''}
@@ -684,24 +1097,26 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
                     folding: true,
                     tabSize: 2,
                     formatOnPaste: true,
+                    automaticLayout: true,
                   }}
                 />
               </div>
             </div>
           )}
 
+          {/* Preview panel */}
           {activeTab === 'preview' && (
-            <div className="flex-1 overflow-auto bg-gray-800 flex items-start justify-center p-4">
+            <div className="flex-1 overflow-auto bg-[#0b0b18] flex items-start justify-center p-6">
               <div
                 style={{ width: typeof previewWidth === 'number' ? previewWidth : '100%', maxWidth: '100%' }}
-                className="bg-white rounded-xl overflow-hidden shadow-2xl transition-all duration-300"
+                className="rounded-2xl overflow-hidden shadow-2xl border border-white/8 transition-all duration-300 bg-white"
               >
                 <iframe
                   srcDoc={previewHtml}
                   title="App Preview"
                   className="w-full"
-                  style={{ height: 600, border: 'none' }}
-                  sandbox="allow-scripts allow-same-origin"
+                  style={{ height: 'calc(100vh - 180px)', border: 'none', display: 'block' }}
+                  sandbox="allow-scripts allow-same-origin allow-modals allow-popups"
                 />
               </div>
             </div>
