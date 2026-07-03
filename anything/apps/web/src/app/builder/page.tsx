@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Send, RefreshCw, Eye, Code2, MessageSquare, Plus, Trash2,
-  ChevronRight, Download, Github, Sparkles, Settings, X, Check,
+  ChevronRight, Download, GitBranch, Sparkles, Settings, X, Check,
   FileCode, FileText, File, Palette, Zap, Monitor, Smartphone,
   Tablet, ChevronLeft, ArrowLeft, Copy,
 } from 'lucide-react';
@@ -446,7 +446,7 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
             onClick={() => setShowGithubPanel(!showGithubPanel)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-medium transition-colors"
           >
-            <Github size={13} />
+                <GitBranch size={13} />
             Publish
           </button>
           <button
@@ -467,7 +467,7 @@ Only include files that changed. Maintain consistency with the ${selectedPreset.
             className="bg-gray-900 border-b border-gray-800 overflow-hidden"
           >
             <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
-              <Github size={14} className="text-gray-400 flex-shrink-0" />
+              <GitBranch size={14} className="text-gray-400 flex-shrink-0" />
               <input
                 type="password"
                 placeholder="GitHub Personal Access Token (repo scope)"
