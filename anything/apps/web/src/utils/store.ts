@@ -5,7 +5,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'audio' | 'code';
+  type?: 'text' | 'image' | 'audio' | 'code';
   url?: string;
   timestamp: number;
   bookmarked?: boolean;

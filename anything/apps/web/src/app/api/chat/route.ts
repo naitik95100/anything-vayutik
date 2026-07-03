@@ -222,17 +222,14 @@ async function callOpenAICompat(
   providerId: string,
 ): Promise<string> {
   const path = cfg.chatPath ?? '/v1/chat/completions';
+  const url = `${cfg.baseUrl}${path}`;
 
-  // Google AI Studio: new OAuth tokens start with "AQ." and must be sent as ?key= URL param,
-  // not as a Bearer header (which causes 403 PERMISSION_DENIED).
-  // Standard AIza... API keys also work via ?key= param.
-  const isGoogleStudio = providerId === 'google-ai-studio';
-  const urlSuffix = isGoogleStudio ? `?key=${encodeURIComponent(apiKey)}` : '';
-  const url = `${cfg.baseUrl}${path}${urlSuffix}`;
-
+  // Google AI Studio: the OpenAI-compatible shim requires the key as
+  // "x-goog-api-key" header — not "Authorization: Bearer" and not "?key=".
+  // This works for both AIza... API keys and AQ.Ab... OAuth tokens.
   let authHeaders: Record<string, string>;
-  if (isGoogleStudio) {
-    authHeaders = {}; // key is in URL param
+  if (providerId === 'google-ai-studio') {
+    authHeaders = { 'x-goog-api-key': apiKey };
   } else if (cfg.authHeader === 'x-api-key') {
     authHeaders = { 'x-api-key': apiKey };
   } else {

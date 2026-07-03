@@ -26,7 +26,6 @@ import {
   Sun,
   Keyboard,
   Image as ImageIcon,
-  Video as VideoIcon,
   Key,
   MessageSquare,
   MoreHorizontal,
@@ -170,21 +169,7 @@ function MessageContent({ message, isUser }: { message: Message; isUser: boolean
       </div>
     );
   }
-  if (message.type === 'video' && message.url) {
-    return (
-      <div className="space-y-2">
-        <p className="text-xs opacity-70 italic">{message.content}</p>
-        <video
-          src={message.url}
-          controls
-          autoPlay
-          loop
-          muted
-          className="rounded-xl w-full max-w-xs md:max-w-sm border border-gray-200 dark:border-gray-700 shadow-lg"
-        />
-      </div>
-    );
-  }
+
   if (message.type === 'audio') {
     // If we have a real audio URL (from Lyria 2), use native <audio>; otherwise TTS
     if (message.url) {
@@ -298,9 +283,9 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         {[
-          '/image a neon city',
-          '/video aurora borealis',
+          '/image a neon city at night',
           '/audio explain quantum AI',
+          '/image a majestic mountain landscape',
           'How does React work?',
         ].map((s) => (
           <button
@@ -320,8 +305,7 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
 const COMMANDS = [
   { cmd: '/image', label: 'Generate Image', icon: ImageIcon, desc: 'Create an AI image from text' },
   { cmd: '/imagine', label: 'Imagine Scene', icon: Sparkles, desc: 'Visualize any concept' },
-  { cmd: '/video', label: 'Generate Video', icon: VideoIcon, desc: 'Create a short video clip' },
-  { cmd: '/audio', label: 'Generate Audio', icon: Volume2, desc: 'Create spoken audio narration' },
+  { cmd: '/audio', label: 'Generate Audio', icon: Volume2, desc: 'Create spoken audio or narration' },
   { cmd: '/code', label: 'Write Code', icon: Hash, desc: 'Generate code with live preview' },
   { cmd: '/summarize', label: 'Summarize', icon: FileText, desc: 'Summarize text or document' },
   { cmd: '/translate', label: 'Translate', icon: Globe, desc: 'Translate to any language' },
@@ -922,30 +906,7 @@ export default function AIChat() {
         return;
       }
 
-      // ── /video command ───────────────────────────────────────────────────
-      const videoMatch = userText.match(/^\/video\s+(.+)/is);
-      if (videoMatch) {
-        const prompt = videoMatch[1].trim();
-        addMessage({ role: 'assistant', content: 'Generating video — this may take up to 60 seconds...', type: 'text' });
-        const res = await fetch('/api/video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, provider: selectedProvider, apiKey }),
-        });
-        const data = await res.json() as { url?: string; error?: string };
-        // Replace the "generating..." message with the result
-        const msgs = msgsRef.current;
-        const last = msgs[msgs.length - 1];
-        if (last?.role === 'assistant') deleteMessage(last.id);
-        if (data.error) {
-          addMessage({ role: 'assistant', content: `Video error: ${data.error}`, type: 'text' });
-        } else {
-          addMessage({ role: 'assistant', content: prompt, type: 'video', url: data.url, model: selectedProvider });
-        }
-        return;
-      }
-
-      // ── /audio command — real audio via Lyria 2 or TTS fallback ────────────
+      // ── /audio command ───────────────────────────────────────────────────
       const audioMatch = userText.match(/^\/audio\s+(.+)/is);
       if (audioMatch) {
         const topic = audioMatch[1].trim();
@@ -1000,7 +961,7 @@ export default function AIChat() {
           model: selectedModel[selectedProvider],
         }),
       });
-      const data = await res.json() as { content?: string; type?: 'text' | 'image' | 'video' | 'audio' | 'code'; url?: string };
+      const data = await res.json() as { content?: string; type?: 'text' | 'image' | 'audio' | 'code'; url?: string };
       addMessage({
         role: 'assistant',
         content: data.content ?? '',
@@ -1901,7 +1862,6 @@ export default function AIChat() {
           <div className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-thin pb-0.5">
             {[
               { label: 'Image', icon: ImageIcon, cmd: '/image ' },
-              { label: 'Video', icon: VideoIcon, cmd: '/video ' },
               { label: 'Audio', icon: Volume2, cmd: '/audio ' },
               { label: 'Code', icon: Hash, cmd: '/code ' },
               { label: 'Templates', icon: Sparkles, cmd: null },

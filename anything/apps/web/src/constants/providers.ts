@@ -650,68 +650,48 @@ export const PROVIDERS: Provider[] = [
     get models() { return ids(this.modelList); },
   },
 
-  // ── 8. REPLICATE ──────────────────────────────────────────────────────────
+  // ── 8. ELEVENLABS ─────────────────────────────────────────────────────────
   {
-    id: 'replicate',
-    name: 'Replicate',
-    company: 'Replicate',
-    domain: 'replicate.com',
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    company: 'ElevenLabs',
+    domain: 'elevenlabs.io',
     description:
-      'Run thousands of open-source AI models in the cloud. Includes $10 free trial credit on sign-up — no billing required to start. Supports video generation via Wan 2.1, LTX Video, and more.',
-    keyLink: 'https://replicate.com/account/api-tokens',
-    placeholderKey: 'r8_...',
-    badge: 'Free Trial',
+      'The most realistic AI text-to-speech. 10,000 characters free every month — no credit card needed. Supports 30+ languages including Hindi, Tamil, Telugu, Bengali, and more.',
+    keyLink: 'https://elevenlabs.io/app/settings/api-keys',
+    placeholderKey: 'sk_...',
+    badge: '10K Free/mo',
     free: true,
-    category: 'multimodal',
-    contextWindow: 'varies',
-    tags: ['Free Trial', 'Video Gen', 'Image Gen', '1000+ Models'],
-    modelList: [
-      {
-        id: 'wavespeedai/wan-2.1-t2v-480p',
-        name: 'Wan 2.1 480p (Video)',
-        capabilities: ['video'],
-        description: 'Fast Wan 2.1 text-to-video — free trial credits',
-        free: true,
-      },
-      {
-        id: 'black-forest-labs/flux-schnell',
-        name: 'FLUX Schnell (Image)',
-        capabilities: ['image'],
-        description: 'Ultra-fast FLUX image generation — free trial credits',
-        free: true,
-      },
-    ],
-    get models() { return ids(this.modelList); },
-  },
-
-  // ── 9. LUMA AI ────────────────────────────────────────────────────────────
-  {
-    id: 'luma-ai',
-    name: 'Luma AI',
-    company: 'Luma AI',
-    domain: 'lumalabs.ai',
-    description:
-      'Dream Machine — state-of-the-art AI video generation. Free accounts get 10 video generations per month at no cost. Just sign up and grab your API key.',
-    keyLink: 'https://lumalabs.ai/dream-machine/api',
-    placeholderKey: 'luma-...',
-    badge: '10 Free/mo',
-    free: true,
-    category: 'multimodal',
+    category: 'audio',
     contextWindow: '—',
-    tags: ['Free Tier', 'Video Gen', 'Dream Machine'],
+    tags: ['Free Tier', 'TTS', '30+ Languages', 'Indian Voices'],
     modelList: [
       {
-        id: 'luma/dream-machine',
-        name: 'Dream Machine (Video)',
-        capabilities: ['video'],
-        description: '10 free video generations per month — no credit card needed',
+        id: 'eleven_turbo_v2_5',
+        name: 'Turbo v2.5',
+        capabilities: ['audio'],
+        description: 'Fastest, lowest latency — best for real-time use',
+        free: true,
+      },
+      {
+        id: 'eleven_multilingual_v2',
+        name: 'Multilingual v2',
+        capabilities: ['audio'],
+        description: '29 languages including Hindi, Tamil, Telugu, Bengali',
+        free: true,
+      },
+      {
+        id: 'eleven_monolingual_v1',
+        name: 'English v1',
+        capabilities: ['audio'],
+        description: 'English-only, very stable and expressive',
         free: true,
       },
     ],
     get models() { return ids(this.modelList); },
   },
 
-  // ── 10. CUSTOM PROVIDER ────────────────────────────────────────────────────
+  // ── 9. CUSTOM PROVIDER ────────────────────────────────────────────────────
   {
     id: 'custom',
     name: 'Custom Provider',
