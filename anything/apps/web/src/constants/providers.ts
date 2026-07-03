@@ -650,7 +650,75 @@ export const PROVIDERS: Provider[] = [
     get models() { return ids(this.modelList); },
   },
 
-  // ── 8. CUSTOM PROVIDER ────────────────────────────────────────────────────
+  // ── 8. FAL.AI ─────────────────────────────────────────────────────────────
+  {
+    id: 'fal-ai',
+    name: 'fal.ai',
+    company: 'fal.ai',
+    domain: 'fal.ai',
+    description:
+      'Serverless AI infrastructure with a free tier. Generate images with FLUX Schnell and videos with Wan 2.1 1.3B — all free with an API key. No credits required for free-tier models.',
+    keyLink: 'https://fal.ai/dashboard/keys',
+    placeholderKey: 'fal-...',
+    badge: 'Free',
+    free: true,
+    category: 'multimodal',
+    contextWindow: '—',
+    tags: ['Free Tier', 'Image Gen', 'Video Gen'],
+    modelList: [
+      {
+        id: 'fal-ai/flux/schnell',
+        name: 'FLUX Schnell (Image)',
+        capabilities: ['image'],
+        description: 'Ultra-fast FLUX image generation — free tier',
+        free: true,
+      },
+      {
+        id: 'fal-ai/wan/v2.1/1.3b/text-to-video',
+        name: 'Wan 2.1 1.3B (Video)',
+        capabilities: ['video'],
+        description: 'Fast text-to-video model — free tier',
+        free: true,
+      },
+    ],
+    get models() { return ids(this.modelList); },
+  },
+
+  // ── 9. HUGGING FACE ────────────────────────────────────────────────────────
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    company: 'Hugging Face',
+    domain: 'huggingface.co',
+    description:
+      'Free Inference API for thousands of open-source models. Generate images with FLUX.1-schnell and use any model from the Hub. Free tier with your HF token.',
+    keyLink: 'https://huggingface.co/settings/tokens',
+    placeholderKey: 'hf_...',
+    badge: 'Free',
+    free: true,
+    category: 'multimodal',
+    contextWindow: 'varies',
+    tags: ['Free', 'Image Gen', 'Open Models'],
+    modelList: [
+      {
+        id: 'black-forest-labs/FLUX.1-schnell',
+        name: 'FLUX.1 Schnell (Image)',
+        capabilities: ['image'],
+        description: 'Fast FLUX image generation via HF Inference API — free',
+        free: true,
+      },
+      {
+        id: 'stabilityai/stable-diffusion-3.5-large',
+        name: 'Stable Diffusion 3.5 Large',
+        capabilities: ['image'],
+        description: 'High quality image model from Stability AI — free',
+        free: true,
+      },
+    ],
+    get models() { return ids(this.modelList); },
+  },
+
+  // ── 10. CUSTOM PROVIDER ────────────────────────────────────────────────────
   {
     id: 'custom',
     name: 'Custom Provider',

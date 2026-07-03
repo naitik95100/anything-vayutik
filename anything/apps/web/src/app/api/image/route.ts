@@ -11,14 +11,57 @@ function parseError(raw: string, status: number, provider: string): string {
 }
 
 // ── Pollinations.AI — Truly free, no API key needed ───────────────────────
-// Returns a direct image URL that works in <img> tags.
-async function generateViaPollinations(prompt: string): Promise<string> {
-  const encoded = encodeURIComponent(prompt);
-  // Use fetch to validate the URL resolves (it redirects to the actual image)
-  const url = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true`;
-  const res = await fetch(url, { method: 'HEAD' });
-  if (!res.ok) throw new Error(`Pollinations.AI returned ${res.status}`);
+// Returns a direct image URL — Pollinations serves images via GET redirect,
+// so we just return the URL and let the browser render it directly.
+function generateViaPollinations(prompt: string): string {
+  const encoded = encodeURIComponent(prompt.trim());
+  return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=flux`;
+}
+
+// ── fal.ai — Free tier FLUX Schnell image generation ─────────────────────
+async function generateViaFal(prompt: string, apiKey: string): Promise<string> {
+  const res = await fetch('https://fal.run/fal-ai/flux/schnell', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt,
+      image_size: 'square_hd',
+      num_images: 1,
+      enable_safety_checker: false,
+    }),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'fal.ai'));
+  const json = JSON.parse(raw) as { images?: { url?: string }[] };
+  const url = json.images?.[0]?.url;
+  if (!url) throw new Error('fal.ai returned no image URL.');
   return url;
+}
+
+// ── Hugging Face — FLUX.1-schnell (free inference API) ────────────────────
+async function generateViaHuggingFace(prompt: string, apiKey: string): Promise<string> {
+  const res = await fetch(
+    'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ inputs: prompt }),
+    },
+  );
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new Error(parseError(raw, res.status, 'HuggingFace'));
+  }
+  // HF returns binary image data
+  const buffer = await res.arrayBuffer();
+  const b64 = Buffer.from(buffer).toString('base64');
+  return `data:image/jpeg;base64,${b64}`;
 }
 
 // ── Novita AI — async txt2img + polling ───────────────────────────────────
@@ -149,12 +192,19 @@ export async function POST(req: Request) {
       case 'google-ai-studio':
         url = await generateViaGoogle(prompt.trim(), apiKey.trim());
         break;
+      case 'fal-ai':
+        url = await generateViaFal(prompt.trim(), apiKey.trim());
+        break;
+      case 'huggingface':
+        url = await generateViaHuggingFace(prompt.trim(), apiKey.trim());
+        break;
       case 'openrouter':
       case 'groq':
       case 'custom':
       default:
-        // Pollinations.AI — completely free, no API key or credits required
-        url = await generateViaPollinations(prompt.trim());
+        // Pollinations.AI — completely free, no API key or credits required.
+        // Returns a URL the browser can load directly as <img src>.
+        url = generateViaPollinations(prompt.trim());
         break;
     }
 

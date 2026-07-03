@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 
-// Video generation — Novita AI (Wan 2.1) is the primary working provider.
-// OpenRouter does NOT have a real video generation endpoint as of July 2025.
-// We show a clear helpful message for unsupported providers.
+// Video generation — supported providers and their models:
+//  - fal.ai:    Wan 2.1 1.3B (FREE tier, requires fal.ai API key)
+//  - Novita AI: Wan 2.1 (PAID, requires balance)
+// OpenRouter does NOT have a real video generation endpoint.
 
 function parseError(raw: string, status: number, provider: string): string {
   try {
@@ -14,7 +15,58 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── Novita AI — Wan 2.1 txt2video with polling ────────────────────────────
+// ── fal.ai — Wan 2.1 1.3B (free tier) ────────────────────────────────────
+async function generateViaFal(prompt: string, apiKey: string): Promise<string> {
+  // Submit the request
+  const submitRes = await fetch('https://queue.fal.run/fal-ai/wan/v2.1/1.3b/text-to-video', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Key ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt,
+      num_frames: 25,
+      frames_per_second: 16,
+      resolution: '480p',
+      num_inference_steps: 30,
+    }),
+  });
+  const submitRaw = await submitRes.text();
+  if (!submitRes.ok) throw new Error(parseError(submitRaw, submitRes.status, 'fal.ai'));
+  const submitJson = JSON.parse(submitRaw) as { request_id?: string; status_url?: string };
+  const requestId = submitJson.request_id;
+  if (!requestId) throw new Error(`fal.ai did not return a request_id: ${submitRaw.slice(0, 200)}`);
+
+  // Poll for result
+  const statusUrl = submitJson.status_url ?? `https://queue.fal.run/fal-ai/wan/v2.1/1.3b/text-to-video/requests/${requestId}`;
+  const deadline = Date.now() + 240_000; // 4 minute timeout
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const statusRes = await fetch(statusUrl, {
+      headers: { Authorization: `Key ${apiKey}` },
+    });
+    const statusJson = await statusRes.json() as {
+      status?: string;
+      video?: { url?: string };
+      output?: { video?: { url?: string } };
+      error?: string;
+    };
+    const status = statusJson.status;
+    if (status === 'COMPLETED' || statusJson.video?.url || statusJson.output?.video?.url) {
+      const url = statusJson.video?.url ?? statusJson.output?.video?.url;
+      if (url) return url;
+      throw new Error('fal.ai completed but returned no video URL.');
+    }
+    if (status === 'FAILED') {
+      throw new Error(`fal.ai video generation failed: ${statusJson.error ?? 'unknown error'}`);
+    }
+    // IN_QUEUE or IN_PROGRESS — keep polling
+  }
+  throw new Error('fal.ai video generation timed out after 4 minutes.');
+}
+
+// ── Novita AI — Wan 2.1 (paid, requires balance) ─────────────────────────
 async function pollNovitaVideo(taskId: string, apiKey: string): Promise<string> {
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
@@ -80,17 +132,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab.` });
     }
 
-    // Only Novita AI supports real video generation right now.
-    // OpenRouter does not have a working /videos/generations endpoint as of July 2025.
-    if (provider === 'novita-ai') {
-      const videoUrl = await generateViaNovita(prompt.trim(), apiKey.trim());
-      return NextResponse.json({ url: videoUrl, type: 'video', model: 'Wan 2.1 (Novita)' });
+    let videoUrl: string;
+    let modelLabel: string;
+
+    switch (provider) {
+      case 'fal-ai':
+        videoUrl = await generateViaFal(prompt.trim(), apiKey.trim());
+        modelLabel = 'Wan 2.1 1.3B (fal.ai)';
+        break;
+      case 'novita-ai':
+        videoUrl = await generateViaNovita(prompt.trim(), apiKey.trim());
+        modelLabel = 'Wan 2.1 (Novita AI)';
+        break;
+      default:
+        return NextResponse.json({
+          error: `Video generation is supported on fal.ai (free tier) and Novita AI (paid). Switch to one of those providers in the Providers tab and add your API key. fal.ai offers a free tier — get a key at fal.ai/dashboard.`,
+        });
     }
 
-    // For all other providers, return a clear actionable message
-    return NextResponse.json({
-      error: `Video generation requires Novita AI. Switch to Novita AI in the Providers tab and add your free API key from novita.ai — Wan 2.1 generates real MP4 videos. OpenRouter and other providers do not support video generation at this time.`,
-    });
+    return NextResponse.json({ url: videoUrl, type: 'video', model: modelLabel });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown video generation error.';
     console.error('[api/video]', msg);
