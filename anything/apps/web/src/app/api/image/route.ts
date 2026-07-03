@@ -90,6 +90,81 @@ function generateViaPollinations(prompt: string, model = 'flux'): string {
   return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=${model}&seed=${Math.floor(Math.random() * 999999)}`;
 }
 
+// ── Custom Provider — Call user's OpenAI-compatible endpoint ─────────────
+async function generateViaCustom(prompt: string, rawKey: string): Promise<string> {
+  // Parse format: "https://base-url.com|optional-auth-key"
+  const pipeIdx = rawKey.indexOf('|');
+  const rawBase = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
+  const authKey = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
+
+  if (!rawBase.startsWith('http')) {
+    throw new Error(
+      'Custom provider: enter endpoint as "https://api.example.com|your-api-key" in API Key field.',
+    );
+  }
+
+  // Try common image generation patterns for custom endpoints
+  const imageEndpoints = [
+    `${rawBase}/images/generations`,      // OpenAI-style
+    `${rawBase}/v1/images/generations`,   // OpenAI with /v1 prefix
+    `${rawBase}/generate`,                 // Short endpoint
+  ];
+
+  const authHeaders: Record<string, string> = authKey
+    ? { Authorization: `Bearer ${authKey}` }
+    : {};
+
+  for (const endpoint of imageEndpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          prompt,
+          model: 'auto',
+          n: 1,
+          size: '1024x1024',
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+
+      if (!res.ok) continue; // Try next endpoint
+
+      const json = await res.json() as {
+        data?: { url?: string; b64_json?: string }[];
+        images?: string[];
+        url?: string;
+        image?: string;
+      };
+
+      // Try various response formats
+      const imageUrl = json.data?.[0]?.url ||
+                       json.data?.[0]?.b64_json ||
+                       json.images?.[0] ||
+                       json.url ||
+                       json.image;
+
+      if (imageUrl) {
+        // If it's base64, convert to data URL
+        if (typeof imageUrl === 'string' && imageUrl.startsWith('/9j')) {
+          return `data:image/jpeg;base64,${imageUrl}`;
+        }
+        if (typeof imageUrl === 'string' && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+          return `data:image/png;base64,${imageUrl}`;
+        }
+        return imageUrl as string;
+      }
+    } catch (_err) {
+      // Continue to next endpoint
+      continue;
+    }
+  }
+
+  throw new Error(
+    'Custom provider image generation failed. Ensure endpoint accepts POST with { prompt, model, n, size } and returns { data[0].url } or similar.',
+  );
+}
+
 // ── Replicate — FLUX Schnell image (free $10 trial credit) ───────────────
 async function generateViaReplicate(prompt: string, apiKey: string): Promise<string> {
   const createRes = await fetch(
@@ -303,10 +378,17 @@ export async function POST(req: Request) {
           url = await generateViaReplicate(prompt.trim(), apiKey.trim());
         }
         break;
+      case 'custom':
+        // Custom provider — use the same logic as chat route
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaCustom(prompt.trim(), apiKey.trim());
+        }
+        break;
       case 'openrouter':
       case 'groq':
       case 'luma-ai':
-      case 'custom':
       default:
         // Pollinations.AI — completely free, no API key or credits required.
         // If a specific imageModel was requested (pollinations-* IDs), use its model.

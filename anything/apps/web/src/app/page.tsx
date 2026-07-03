@@ -264,7 +264,7 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
           transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           className="w-20 h-20 md:w-24 md:h-24 rounded-3xl overflow-hidden flex items-center justify-center shadow-2xl"
         >
-          <img src="/logo.png" alt="Vayu Nexus" className="w-full h-full object-contain" />
+          <img src="/logo.png" alt="Nexus Vayu" className="w-full h-full object-contain" />
         </motion.div>
         <motion.div
           animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.5, 0.2] }}
@@ -274,7 +274,7 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
       </div>
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Welcome to Vayu Nexus
+          Welcome to Nexus Vayu
         </h2>
         <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs leading-relaxed">
           Choose a provider, add your API key, then chat. Type{' '}
@@ -1065,9 +1065,9 @@ export default function AIChat() {
             transition={{ duration: 3, repeat: Infinity }}
             className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center"
           >
-            <img src="/logo.png" alt="Vayu Nexus" className="w-8 h-8 object-contain" />
+            <img src="/logo.png" alt="Nexus Vayu" className="w-8 h-8 object-contain" />
           </motion.div>
-          <span className="font-bold text-base tracking-tight">Vayu Nexus</span>
+          <span className="font-bold text-base tracking-tight">Nexus Vayu</span>
         </div>
         <button
           onClick={() => setShowSidebar(false)}
@@ -1915,7 +1915,7 @@ export default function AIChat() {
                   }
                   if (e.key === 'Escape') setShowCommandMenu(false);
                 }}
-                placeholder="Message Vayu Nexus… (⌘+Enter to send, / for commands)"
+                placeholder="Message Nexus Vayu… (⌘+Enter to send, / for commands)"
                 disabled={isGenerating}
                 rows={1}
                 className="flex-1 bg-transparent outline-none resize-none text-sm placeholder-gray-400 dark:placeholder-gray-600 text-gray-900 dark:text-white py-1 max-h-36 scrollbar-thin"

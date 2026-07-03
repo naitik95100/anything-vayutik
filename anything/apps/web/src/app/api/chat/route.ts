@@ -20,7 +20,7 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'bearer',
     extraHeaders: {
       'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-      'X-Title': 'Vayu Nexus',
+      'X-Title': 'Nexus Vayu',
     },
   },
   groq: {

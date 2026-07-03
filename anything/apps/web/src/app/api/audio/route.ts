@@ -183,7 +183,7 @@ async function generateNarrationScript(
 
   const extraHeaders: Record<string, string> =
     provider === 'openrouter'
-      ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'Vayu Nexus' }
+      ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'Nexus Vayu' }
       : {};
 
   const resolvedModel = model || PROVIDER_DEFAULT_MODEL[provider] || 'gpt-4o-mini';
