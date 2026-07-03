@@ -685,7 +685,9 @@ export default function AIChat() {
   const [renameVal, setRenameVal] = useState('');
   const [showKeyFor, setShowKeyFor] = useState<Record<string, boolean>>({});
   const [convMenuId, setConvMenuId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<Record<string, string>>({});
+  const [selectedModel, setSelectedModel] = useState<Record<string, string>>(
+    () => Object.fromEntries(PROVIDERS.map((p) => [p.id, p.models[0]]))
+  );
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);

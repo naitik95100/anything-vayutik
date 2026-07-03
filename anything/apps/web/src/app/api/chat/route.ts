@@ -1,15 +1,14 @@
 // Map every provider ID (from the frontend) to its OpenAI-compatible base URL.
-// Providers that use a non-standard auth header are listed in SPECIAL_AUTH.
 const PROVIDER_BASE_URLS: Record<string, string> = {
-  // ── Text / LLM providers ─────────────────────────────────────────────
   'openai-gpt4o':    'https://api.openai.com',
   openai:            'https://api.openai.com',
   'anthropic-claude':'https://api.anthropic.com',
   anthropic:         'https://api.anthropic.com',
+  // Google Gemini uses its own OpenAI-compatible shim
   'google-gemini':   'https://generativelanguage.googleapis.com/v1beta/openai',
   groq:              'https://api.groq.com/openai',
-  mistral:           'https://api.mistral.ai',
   'mistral-ai':      'https://api.mistral.ai',
+  mistral:           'https://api.mistral.ai',
   perplexity:        'https://api.perplexity.ai',
   deepseek:          'https://api.deepseek.com',
   'deepseek-coder':  'https://api.deepseek.com',
@@ -25,12 +24,35 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   'moonshot-kimi':   'https://api.moonshot.cn',
   'nvidia-nim':      'https://integrate.api.nvidia.com',
   'code-llama':      'https://api.together.xyz',
-  'codestral':       'https://codestral.mistral.ai',
-  'starcoder':       'https://api.together.xyz',
+  codestral:         'https://codestral.mistral.ai',
+  starcoder:         'https://api.together.xyz',
   'wizard-coder':    'https://api.together.xyz',
   'inflection-pi':   'https://api.inflection.ai',
   'aleph-alpha':     'https://api.aleph-alpha.com',
   huggingface:       'https://api-inference.huggingface.co/v1',
+  replicate:         'https://openai.on-replicate.com',
+};
+
+// Provider default models — used when frontend sends no model
+const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  'openai-gpt4o':    'gpt-4o',
+  'anthropic-claude':'claude-3-5-sonnet-20241022',
+  'google-gemini':   'gemini-2.5-flash',
+  groq:              'llama-3.3-70b-versatile',
+  'mistral-ai':      'mistral-large-latest',
+  perplexity:        'sonar',
+  deepseek:          'deepseek-chat',
+  'deepseek-coder':  'deepseek-coder',
+  'xai-grok':        'grok-3',
+  cohere:            'command-r-plus',
+  'together-ai':     'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+  'meta-llama':      'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+  'ai21-labs':       'jamba-1.5-large',
+  qwen:              'qwen-plus',
+  'moonshot-kimi':   'moonshot-v1-8k',
+  'nvidia-nim':      'meta/llama-3.3-70b-instruct',
+  codestral:         'codestral-latest',
+  huggingface:       'mistralai/Mistral-7B-Instruct-v0.2',
 };
 
 // Providers that use x-api-key header instead of Authorization: Bearer
@@ -155,8 +177,8 @@ export async function POST(request: Request) {
     } = await request.json();
 
     const resolvedProvider = (provider ?? 'openai-gpt4o') as string;
-    const resolvedModel    = (model ?? 'gpt-4o') as string;
     const resolvedApiKey   = ((apiKey as string) ?? '').trim();
+    const resolvedModel    = ((model as string) || PROVIDER_DEFAULT_MODELS[resolvedProvider] || 'gpt-4o');
 
     // ── IMAGE GENERATION ───────────────────────────────────────────────────
     if (message.startsWith('/image ') || message.startsWith('/imagine ')) {
