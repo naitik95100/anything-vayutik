@@ -858,7 +858,6 @@ export default function AIChat() {
           model: selectedModel[selectedProvider],
         }),
       });
-      if (!res.ok) throw new Error('Request failed');
       const data = await res.json();
       addMessage({
         role: 'assistant',
@@ -867,11 +866,12 @@ export default function AIChat() {
         url: data.url,
         model: selectedProvider,
       });
-    } catch {
-      toast.error('Request failed. Please try again.');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Network error. Check your connection and try again.';
+      toast.error(errMsg);
       addMessage({
         role: 'assistant',
-        content: 'Failed to get a response. Please try again.',
+        content: errMsg,
         type: 'text',
       });
     } finally {

@@ -1,19 +1,45 @@
-// OpenAI-compatible base URLs for each provider
+// Map every provider ID (from the frontend) to its OpenAI-compatible base URL.
+// Providers that use a non-standard auth header are listed in SPECIAL_AUTH.
 const PROVIDER_BASE_URLS: Record<string, string> = {
-  openai: 'https://api.openai.com',
-  groq: 'https://api.groq.com/openai',
-  mistral: 'https://api.mistral.ai',
-  perplexity: 'https://api.perplexity.ai',
-  deepseek: 'https://api.deepseek.com',
-  'xai-grok': 'https://api.x.ai',
-  cohere: 'https://api.cohere.ai/compatibility',
-  'together-ai': 'https://api.together.xyz',
-  'ai21-labs': 'https://api.ai21.com/studio',
-  qwen: 'https://dashscope-intl.aliyuncs.com/compatible-mode',
-  'google-gemini': 'https://generativelanguage.googleapis.com/v1beta/openai',
-  anthropic: 'https://api.anthropic.com',
-  'microsoft-phi': 'https://api.openai.com',
-  'meta-llama': 'https://api.together.xyz',
+  // ── Text / LLM providers ─────────────────────────────────────────────
+  'openai-gpt4o':    'https://api.openai.com',
+  openai:            'https://api.openai.com',
+  'anthropic-claude':'https://api.anthropic.com',
+  anthropic:         'https://api.anthropic.com',
+  'google-gemini':   'https://generativelanguage.googleapis.com/v1beta/openai',
+  groq:              'https://api.groq.com/openai',
+  mistral:           'https://api.mistral.ai',
+  'mistral-ai':      'https://api.mistral.ai',
+  perplexity:        'https://api.perplexity.ai',
+  deepseek:          'https://api.deepseek.com',
+  'deepseek-coder':  'https://api.deepseek.com',
+  'xai-grok':        'https://api.x.ai',
+  cohere:            'https://api.cohere.ai/compatibility',
+  'together-ai':     'https://api.together.xyz',
+  'meta-llama':      'https://api.together.xyz',
+  'ai21-labs':       'https://api.ai21.com/studio',
+  qwen:              'https://dashscope-intl.aliyuncs.com/compatible-mode',
+  'microsoft-phi':   'https://api.openai.com',
+  'google-gemma':    'https://api.together.xyz',
+  'upstage-solar':   'https://api.upstage.ai',
+  'moonshot-kimi':   'https://api.moonshot.cn',
+  'nvidia-nim':      'https://integrate.api.nvidia.com',
+  'code-llama':      'https://api.together.xyz',
+  'codestral':       'https://codestral.mistral.ai',
+  'starcoder':       'https://api.together.xyz',
+  'wizard-coder':    'https://api.together.xyz',
+  'inflection-pi':   'https://api.inflection.ai',
+  'aleph-alpha':     'https://api.aleph-alpha.com',
+  huggingface:       'https://api-inference.huggingface.co/v1',
+};
+
+// Providers that use x-api-key header instead of Authorization: Bearer
+const XAPI_KEY_PROVIDERS = new Set(['anthropic-claude', 'anthropic']);
+
+// Providers whose /v1/chat/completions path differs
+const CUSTOM_PATH: Record<string, string> = {
+  'upstage-solar': '/v1/solar/chat/completions',
+  'inflection-pi': '/v1/chat',
 };
 
 async function callChatCompletion(
@@ -24,34 +50,49 @@ async function callChatCompletion(
   temperature = 0.7,
   maxTokens = 2048
 ) {
-  // Use the provider's own base URL, fall back to AI Gateway
   const baseUrl = PROVIDER_BASE_URLS[provider];
 
   if (baseUrl) {
     if (!apiKey) {
       throw new Error(
-        `No API key found for "${provider}". Please add your key in the Keys tab on the right panel.`
+        `No API key configured for "${provider}". Open the Keys tab on the right and paste your key.`
       );
     }
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+
+    const path = CUSTOM_PATH[provider] ?? '/v1/chat/completions';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (XAPI_KEY_PROVIDERS.has(provider)) {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const res = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
     });
+
     const raw = await res.text();
     if (!res.ok) {
-      throw new Error(`${provider} API error ${res.status}: ${raw.slice(0, 400)}`);
+      let detail = raw.slice(0, 500);
+      try {
+        const parsed = JSON.parse(raw);
+        detail = parsed?.error?.message ?? detail;
+      } catch { /* keep raw */ }
+      throw new Error(`${provider} returned ${res.status}: ${detail}`);
     }
     return JSON.parse(raw);
   }
 
-  // Unknown provider — try via AI Gateway
+  // Unknown provider — fall back to Vercel AI Gateway
   const gatewayKey = apiKey || process.env.AI_GATEWAY_API_KEY;
   if (!gatewayKey) {
-    throw new Error('No API key available. Please add a key in the Keys tab.');
+    throw new Error(
+      'No API key available. Add your key in the Keys tab, or set AI_GATEWAY_API_KEY in Settings → Vars.'
+    );
   }
   const res = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
     method: 'POST',
@@ -63,7 +104,12 @@ async function callChatCompletion(
   });
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`AI Gateway error ${res.status}: ${raw.slice(0, 400)}`);
+    let detail = raw.slice(0, 500);
+    try {
+      const parsed = JSON.parse(raw);
+      detail = parsed?.error?.message ?? detail;
+    } catch { /* keep raw */ }
+    throw new Error(`AI Gateway returned ${res.status}: ${detail}`);
   }
   return JSON.parse(raw);
 }
@@ -72,7 +118,7 @@ async function callAIGateway(endpoint: string, body: unknown) {
   const apiKey = process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     throw new Error(
-      'AI_GATEWAY_API_KEY is not set. Please add it in Settings → Vars.'
+      'AI_GATEWAY_API_KEY is not set. Add it in Settings → Vars to enable image/video generation.'
     );
   }
   const res = await fetch(`https://ai-gateway.vercel.sh${endpoint}`, {
@@ -85,7 +131,12 @@ async function callAIGateway(endpoint: string, body: unknown) {
   });
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`AI Gateway responded with ${res.status}: ${raw.slice(0, 400)}`);
+    let detail = raw.slice(0, 500);
+    try {
+      const parsed = JSON.parse(raw);
+      detail = parsed?.error?.message ?? detail;
+    } catch { /* keep raw */ }
+    throw new Error(`AI Gateway returned ${res.status}: ${detail}`);
   }
   return JSON.parse(raw);
 }
@@ -103,24 +154,21 @@ export async function POST(request: Request) {
       model,
     } = await request.json();
 
-    const resolvedProvider = (provider ?? 'openai') as string;
-    const resolvedModel = (model ?? 'gpt-4o') as string;
-    const resolvedApiKey = ((apiKey as string) ?? '').trim();
+    const resolvedProvider = (provider ?? 'openai-gpt4o') as string;
+    const resolvedModel    = (model ?? 'gpt-4o') as string;
+    const resolvedApiKey   = ((apiKey as string) ?? '').trim();
 
     // ── IMAGE GENERATION ───────────────────────────────────────────────────
     if (message.startsWith('/image ') || message.startsWith('/imagine ')) {
       const prompt = message.replace(/^\/(image|imagine)\s+/, '').trim();
-
       const data = await callAIGateway('/v1/images/generations', {
         prompt,
         model: 'google/imagen-4.0-generate-001',
         n: 1,
         size: '1024x1024',
       });
-
-      const url = data?.data?.[0]?.url || data?.url || '';
-      if (!url) throw new Error('No image URL returned from the API.');
-
+      const url = data?.data?.[0]?.url ?? data?.url ?? '';
+      if (!url) throw new Error('No image URL in the API response.');
       return Response.json({
         role: 'assistant',
         content: `Here is your generated image for: "${prompt}"`,
@@ -132,15 +180,12 @@ export async function POST(request: Request) {
     // ── VIDEO GENERATION ───────────────────────────────────────────────────
     if (message.startsWith('/video ')) {
       const prompt = message.replace('/video ', '').trim();
-
       const data = await callAIGateway('/v1/videos/generations', {
         prompt,
         model: 'luma/genie-2.5-generate-001',
       });
-
-      const url = data?.data?.[0]?.url || data?.url || '';
-      if (!url) throw new Error('No video URL returned from the API.');
-
+      const url = data?.data?.[0]?.url ?? data?.url ?? '';
+      if (!url) throw new Error('No video URL in the API response.');
       return Response.json({
         role: 'assistant',
         content: `Here is your generated video for: "${prompt}"`,
@@ -152,40 +197,30 @@ export async function POST(request: Request) {
     // ── AUDIO GENERATION ──────────────────────────────────────────────────
     if (message.startsWith('/audio ')) {
       const topic = message.replace('/audio ', '').trim();
-
       const data = await callChatCompletion(
         resolvedProvider,
         resolvedApiKey,
         resolvedModel,
-        [
-          {
-            role: 'user',
-            content: `Create a clear, engaging spoken narration script about: "${topic}". Write naturally as if being spoken aloud. Keep it to 2-3 paragraphs (30-60 seconds when read aloud).`,
-          },
-        ],
+        [{ role: 'user', content: `Write a clear 2–3 paragraph narration script (30–60 seconds when read aloud) about: "${topic}". Write it as natural spoken words, no bullet points.` }],
         0.7,
         1024
       );
-
-      const script = data?.choices?.[0]?.message?.content || '';
+      const script = data?.choices?.[0]?.message?.content ?? '';
       if (!script) throw new Error('No audio script returned from the API.');
-
       return Response.json({ role: 'assistant', content: script, type: 'audio' });
     }
 
     // ── TEXT CHAT & CODE GENERATION ────────────────────────────────────────
     const isCodeRequest =
       message.startsWith('/code ') ||
-      /\b(write|create|build|make|generate|show me)\b.*(code|function|component|class|script|app|program|snippet)/i.test(
-        message
-      ) ||
+      /\b(write|create|build|make|generate|show me)\b.*(code|function|component|class|script|app|program|snippet)/i.test(message) ||
       /\b(how to|how do i)\b.*\b(code|implement|program|build)\b/i.test(message);
 
     const sysPrompt =
       systemPrompt ||
       (isCodeRequest
-        ? 'You are an expert code assistant. Write complete, runnable code in markdown code blocks with the language specified (e.g. ```html, ```javascript, ```python).'
-        : 'You are a helpful, friendly AI assistant. Be concise and accurate in your responses.');
+        ? 'You are an expert programmer. Provide complete, runnable code inside markdown fenced code blocks with the language identifier (e.g. ```python, ```javascript).'
+        : 'You are a helpful, knowledgeable AI assistant. Be concise, accurate, and friendly.');
 
     const data = await callChatCompletion(
       resolvedProvider,
@@ -193,7 +228,7 @@ export async function POST(request: Request) {
       resolvedModel,
       [
         { role: 'system', content: sysPrompt },
-        ...(history || []).map((m: { role: string; content: string }) => ({
+        ...(history ?? []).map((m: { role: string; content: string }) => ({
           role: m.role,
           content: m.content,
         })),
@@ -203,20 +238,16 @@ export async function POST(request: Request) {
       maxTokens ?? 2048
     );
 
-    const content = data?.choices?.[0]?.message?.content || '';
-    if (!content) throw new Error('No content returned from the API.');
+    const content = data?.choices?.[0]?.message?.content ?? '';
+    if (!content) throw new Error('Empty response from the API.');
 
-    const type =
-      isCodeRequest && /```[\w]*\n[\s\S]+?```/.test(content) ? 'code' : 'text';
-
+    const type = isCodeRequest && /```[\w]*\n[\s\S]+?```/.test(content) ? 'code' : 'text';
     return Response.json({ role: 'assistant', content, type });
+
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'An unexpected error occurred.';
-    console.error('[chat route error]', message);
-    return Response.json(
-      { role: 'assistant', content: `Error: ${message}`, type: 'text' },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    console.error('[chat route]', msg);
+    // Return 200 with the error in content so the frontend can display it
+    return Response.json({ role: 'assistant', content: `Error: ${msg}`, type: 'text' });
   }
 }
