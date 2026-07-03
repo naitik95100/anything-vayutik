@@ -46,7 +46,7 @@ import {
   Settings,
   Layers,
 } from 'lucide-react';
-import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS } from '@/constants/providers';
+import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, type ModelCapability } from '@/constants/providers';
 import { useStore, type Message, type Conversation } from '@/utils/store';
 import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
@@ -1104,14 +1104,14 @@ export default function AIChat() {
               <Search size={13} className="text-gray-400 flex-shrink-0" />
               <input
                 type="text"
-                placeholder={`Search ${PROVIDERS.length}+ models...`}
+                placeholder={`Search ${PROVIDERS.length} providers...`}
                 value={searchProvider}
                 onChange={(e) => setSearchProvider(e.target.value)}
                 className="flex-1 bg-transparent text-xs outline-none placeholder-gray-400 dark:placeholder-gray-600 text-gray-900 dark:text-white"
               />
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {['all', 'text', 'multimodal', 'code', 'image', 'video', 'audio'].map((cat) => (
+              {['all', 'text', 'multimodal', 'code'].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setProviderFilter(cat)}
@@ -1162,7 +1162,24 @@ export default function AIChat() {
                         isSelected ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500'
                       )}
                     >
-                      {provider.company}
+                      {provider.company} · {provider.modelList?.length ?? provider.models.length} models
+                    </div>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {Array.from(
+                        new Set((provider.modelList ?? []).flatMap((m) => m.capabilities ?? []))
+                      ).slice(0, 4).map((cap) => (
+                        <span
+                          key={cap}
+                          className={cn(
+                            'text-[8px] px-1 py-0.5 rounded font-bold uppercase',
+                            isSelected
+                              ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                              : CAPABILITY_COLORS[cap as ModelCapability]
+                          )}
+                        >
+                          {cap}
+                        </span>
+                      ))}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -1212,35 +1229,97 @@ export default function AIChat() {
                   )}
                 </div>
               </div>
+              {/* Model list with capability badges */}
               <div>
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 block">
-                  Model
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedModel[currentProvider.id] ?? currentProvider.models[0]}
-                    onChange={(e) =>
-                      setSelectedModel((p) => ({ ...p, [currentProvider.id]: e.target.value }))
-                    }
-                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white appearance-none outline-none pr-8"
-                  >
-                    {currentProvider.models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                  />
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Models ({currentProvider.modelList?.length ?? currentProvider.models.length})
+                  </label>
+                  <span className="text-[10px] text-gray-400">
+                    {selectedModel[currentProvider.id]
+                      ? `Active: ${(selectedModel[currentProvider.id] ?? '').split('/').pop()}`
+                      : 'Select a model'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto scrollbar-thin pr-0.5">
+                  {(currentProvider.modelList ?? currentProvider.models.map((m) => ({ id: m, name: m, capabilities: ['text' as ModelCapability] }))).map((entry) => {
+                    const isActive = (selectedModel[currentProvider.id] ?? currentProvider.models[0]) === entry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        onClick={() => setSelectedModel((p) => ({ ...p, [currentProvider.id]: entry.id }))}
+                        className={cn(
+                          'w-full text-left p-2.5 rounded-xl border transition-all',
+                          isActive
+                            ? 'bg-black dark:bg-white border-black dark:border-white'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className={cn('text-xs font-semibold truncate', isActive ? 'text-white dark:text-black' : 'text-gray-900 dark:text-white')}>
+                              {entry.name ?? entry.id.split('/').pop()}
+                            </div>
+                            {entry.description && (
+                              <div className={cn('text-[10px] mt-0.5 line-clamp-1', isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400 dark:text-gray-500')}>
+                                {entry.description}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(entry.capabilities ?? ['text']).map((cap: ModelCapability) => (
+                                <span
+                                  key={cap}
+                                  className={cn(
+                                    'text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide',
+                                    isActive
+                                      ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                                      : CAPABILITY_COLORS[cap]
+                                  )}
+                                >
+                                  {cap}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            {entry.contextWindow && (
+                              <span className={cn('text-[9px] font-mono', isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400')}>
+                                {entry.contextWindow}
+                              </span>
+                            )}
+                            {entry.free && (
+                              <span className={cn('text-[9px] px-1.5 py-0.5 rounded-md font-bold', isActive ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black' : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300')}>
+                                FREE
+                              </span>
+                            )}
+                            {isActive && (
+                              <Check size={11} className="text-white dark:text-black" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
-                  <Key size={11} />
-                  API Key
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Key size={11} />
+                    API Key
+                  </label>
+                  {currentProvider.keyLink && (
+                    <a
+                      href={currentProvider.keyLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-blue-500 hover:text-blue-600 dark:text-blue-400 flex items-center gap-0.5 font-medium"
+                    >
+                      Get API Key
+                      <ChevronRight size={10} />
+                    </a>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
