@@ -845,14 +845,89 @@ export default function AIChat() {
     setShowCommandMenu(false);
     addMessage({ role: 'user', content: userText });
     setIsGenerating(true);
+
+    const apiKey = apiKeys[selectedProvider] ?? '';
+
     try {
+      // ── /image command ───────────────────────────────────────────────────
+      const imageMatch = userText.match(/^\/image\s+(.+)/is);
+      if (imageMatch) {
+        const prompt = imageMatch[1].trim();
+        const res = await fetch('/api/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, provider: selectedProvider, apiKey }),
+        });
+        const data = await res.json() as { url?: string; error?: string; type?: string };
+        if (data.error) {
+          addMessage({ role: 'assistant', content: `Image error: ${data.error}`, type: 'text' });
+        } else {
+          addMessage({ role: 'assistant', content: prompt, type: 'image', url: data.url, model: selectedProvider });
+        }
+        return;
+      }
+
+      // ── /video command ───────────────────────────────────────────────────
+      const videoMatch = userText.match(/^\/video\s+(.+)/is);
+      if (videoMatch) {
+        const prompt = videoMatch[1].trim();
+        addMessage({ role: 'assistant', content: 'Generating video — this may take up to 60 seconds...', type: 'text' });
+        const res = await fetch('/api/video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, provider: selectedProvider, apiKey }),
+        });
+        const data = await res.json() as { url?: string; error?: string };
+        // Replace the "generating..." message with the result
+        const msgs = msgsRef.current;
+        const last = msgs[msgs.length - 1];
+        if (last?.role === 'assistant') deleteMessage(last.id);
+        if (data.error) {
+          addMessage({ role: 'assistant', content: `Video error: ${data.error}`, type: 'text' });
+        } else {
+          addMessage({ role: 'assistant', content: prompt, type: 'video', url: data.url, model: selectedProvider });
+        }
+        return;
+      }
+
+      // ── /audio command — generate script via LLM, speak via Web Speech API ──
+      const audioMatch = userText.match(/^\/audio\s+(.+)/is);
+      if (audioMatch) {
+        const topic = audioMatch[1].trim();
+        // Get LLM to write a short narration
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `Write a clear, engaging spoken-word narration (2-3 paragraphs, no markdown, no headers, plain prose) about: ${topic}`,
+            provider: selectedProvider,
+            apiKey,
+            history: [],
+            systemPrompt: 'You write concise spoken narration scripts. No markdown, no bullet points, only flowing prose meant to be read aloud.',
+            temperature: 0.7,
+            maxTokens: 600,
+            model: selectedModel[selectedProvider],
+          }),
+        });
+        const data = await res.json() as { content?: string };
+        const script = data.content ?? topic;
+        addMessage({
+          role: 'assistant',
+          content: script,
+          type: 'audio',
+          model: selectedProvider,
+        });
+        return;
+      }
+
+      // ── Regular chat ─────────────────────────────────────────────────────
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userText,
           provider: selectedProvider,
-          apiKey: apiKeys[selectedProvider] ?? '',
+          apiKey,
           history: msgsRef.current.slice(-20),
           systemPrompt: settings.systemPrompt,
           temperature: settings.temperature,
@@ -860,10 +935,10 @@ export default function AIChat() {
           model: selectedModel[selectedProvider],
         }),
       });
-      const data = await res.json();
+      const data = await res.json() as { content?: string; type?: string; url?: string };
       addMessage({
         role: 'assistant',
-        content: data.content,
+        content: data.content ?? '',
         type: data.type,
         url: data.url,
         model: selectedProvider,
@@ -871,11 +946,7 @@ export default function AIChat() {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Network error. Check your connection and try again.';
       toast.error(errMsg);
-      addMessage({
-        role: 'assistant',
-        content: errMsg,
-        type: 'text',
-      });
+      addMessage({ role: 'assistant', content: errMsg, type: 'text' });
     } finally {
       setIsGenerating(false);
     }
@@ -888,6 +959,7 @@ export default function AIChat() {
     settings,
     selectedModel,
     addMessage,
+    deleteMessage,
     createConversation,
     setActiveConversation,
   ]);
