@@ -10,12 +10,84 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
+// ── IMAGE MODELS — free, no credit card required ───────────────────────────
+// Listed here for UI reference and routing
+export const FREE_IMAGE_MODELS = [
+  {
+    id: 'pollinations-flux',
+    name: 'FLUX (Pollinations)',
+    provider: 'pollinations',
+    description: 'Black Forest Labs FLUX via Pollinations — completely free, no key',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'pollinations-turbo',
+    name: 'FLUX Turbo (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'turbo',
+    description: 'Faster FLUX variant on Pollinations — free, no key',
+    free: true,
+    quality: 'Fast',
+  },
+  {
+    id: 'pollinations-stable-diffusion',
+    name: 'Stable Diffusion 3.5 (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'stable-diffusion-3.5-large',
+    description: 'Stability AI SD 3.5 via Pollinations — free, no key',
+    free: true,
+    quality: 'Good',
+  },
+  {
+    id: 'pollinations-gptimage',
+    name: 'GPT-Image-1 (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'gptimage',
+    description: 'OpenAI GPT-Image via Pollinations — free, no key',
+    free: true,
+    quality: 'Premium',
+  },
+  {
+    id: 'replicate-flux-schnell',
+    name: 'FLUX Schnell (Replicate)',
+    provider: 'replicate',
+    description: 'Ultra-fast FLUX Schnell on Replicate — $0.003/image, $10 free trial',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'novita-flux',
+    name: 'FLUX Schnell (Novita AI)',
+    provider: 'novita-ai',
+    description: 'FLUX Schnell on Novita AI — generous free credits',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'nvidia-flux-dev',
+    name: 'FLUX Dev (NVIDIA NIM)',
+    provider: 'nvidia-nim',
+    description: 'FLUX Dev on NVIDIA — 1000 free credits on sign-up',
+    free: true,
+    quality: 'Premium',
+  },
+  {
+    id: 'google-imagen3',
+    name: 'Imagen 3 (Google AI Studio)',
+    provider: 'google-ai-studio',
+    description: "Google's best image model — free tier with API key",
+    free: true,
+    quality: 'Premium',
+  },
+];
+
 // ── Pollinations.AI — Truly free, no API key needed ───────────────────────
 // Returns a direct image URL — Pollinations serves images via GET redirect,
 // so we just return the URL and let the browser render it directly.
-function generateViaPollinations(prompt: string): string {
+function generateViaPollinations(prompt: string, model = 'flux'): string {
   const encoded = encodeURIComponent(prompt.trim());
-  return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=flux`;
+  return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=${model}&seed=${Math.floor(Math.random() * 999999)}`;
 }
 
 // ── Replicate — FLUX Schnell image (free $10 trial credit) ───────────────
@@ -174,36 +246,62 @@ async function generateViaGoogle(prompt: string, apiKey: string): Promise<string
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/image
 // Body: { prompt: string, provider: string, apiKey: string }
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────��───────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
-    const { prompt, provider, apiKey } = await req.json() as {
+    const { prompt, provider, apiKey, imageModel } = await req.json() as {
       prompt: string;
       provider: string;
       apiKey: string;
+      imageModel?: string; // optional specific model override
     };
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: 'Prompt is required. Usage: /image a sunset over mountains' });
     }
-    if (!apiKey?.trim()) {
-      return NextResponse.json({ error: `No API key set for "${provider}". Add it in the Keys tab on the right panel.` });
-    }
 
     let url: string;
 
+    // If imageModel maps to a specific Pollinations variant, use that
+    const pollinationsModelMap: Record<string, string> = {
+      'pollinations-flux':             'flux',
+      'pollinations-turbo':            'turbo',
+      'pollinations-stable-diffusion': 'stable-diffusion-3.5-large',
+      'pollinations-gptimage':         'gptimage',
+    };
+
+    const pollinationsModel = imageModel ? pollinationsModelMap[imageModel] : undefined;
+
+    // Provider-aware routing
     switch (provider) {
       case 'novita-ai':
-        url = await generateViaNovita(prompt.trim(), apiKey.trim());
+        if (!apiKey?.trim()) {
+          // Fall back to Pollinations if no key
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaNovita(prompt.trim(), apiKey.trim());
+        }
         break;
       case 'nvidia-nim':
-        url = await generateViaNvidia(prompt.trim(), apiKey.trim());
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaNvidia(prompt.trim(), apiKey.trim());
+        }
         break;
       case 'google-ai-studio':
-        url = await generateViaGoogle(prompt.trim(), apiKey.trim());
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaGoogle(prompt.trim(), apiKey.trim());
+        }
         break;
       case 'replicate':
-        url = await generateViaReplicate(prompt.trim(), apiKey.trim());
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaReplicate(prompt.trim(), apiKey.trim());
+        }
         break;
       case 'openrouter':
       case 'groq':
@@ -211,8 +309,8 @@ export async function POST(req: Request) {
       case 'custom':
       default:
         // Pollinations.AI — completely free, no API key or credits required.
-        // Returns a URL the browser loads directly as <img src>.
-        url = generateViaPollinations(prompt.trim());
+        // If a specific imageModel was requested (pollinations-* IDs), use its model.
+        url = generateViaPollinations(prompt.trim(), pollinationsModel ?? 'flux');
         break;
     }
 

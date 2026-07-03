@@ -19,48 +19,90 @@ function parseError(raw: string, status: number, provider: string): string {
   }
 }
 
-// ── ElevenLabs voices — curated list with Indian + global languages ─────────
-// All of these work on the free tier (10,000 chars/month, no credit card).
+// ── ElevenLabs voices — 60+ voices covering Indian + global languages ────────
+// All standard voices work on the free tier (10,000 chars/month, no credit card).
+// Indian language voices use eleven_multilingual_v2 which understands Hindi, Tamil,
+// Telugu, Bengali, Gujarati, Marathi, Kannada, Malayalam, Punjabi and Urdu natively.
 export const ELEVENLABS_VOICES = [
-  // English (Global)
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', lang: 'English (US)', accent: 'American' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', lang: 'English (US)', accent: 'American' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', lang: 'English (US)', accent: 'American' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', lang: 'English (US)', accent: 'American' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', lang: 'English (US)', accent: 'American' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', lang: 'English (US)', accent: 'American' },
-  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', lang: 'English (US)', accent: 'American' },
-  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', lang: 'English (US)', accent: 'American' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', lang: 'English (UK)', accent: 'British' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', lang: 'English (AU)', accent: 'Australian' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', lang: 'English (UK)', accent: 'British' },
-  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', lang: 'English (US)', accent: 'American' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', lang: 'English (UK)', accent: 'British' },
-  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', lang: 'English (US)', accent: 'American' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', lang: 'English (UK)', accent: 'British' },
-  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', lang: 'English (US)', accent: 'American' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', lang: 'English (UK)', accent: 'British' },
-  // Indian Languages
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Arjun (Hindi)', lang: 'Hindi (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Priya (Tamil)', lang: 'Tamil (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Vikram (Telugu)', lang: 'Telugu (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Ananya (Bengali)', lang: 'Bengali (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Rohan (Gujarati)', lang: 'Gujarati (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Meera (Marathi)', lang: 'Marathi (India)', accent: 'Indian', modelId: 'eleven_multilingual_v2' },
-  // Other Languages
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Diego', lang: 'Spanish (ES)', accent: 'Spanish', modelId: 'eleven_multilingual_v2' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Valentina', lang: 'Spanish (LA)', accent: 'Latin American', modelId: 'eleven_multilingual_v2' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Luca', lang: 'Italian', accent: 'Italian', modelId: 'eleven_multilingual_v2' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Hans', lang: 'German', accent: 'German', modelId: 'eleven_multilingual_v2' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Sophie', lang: 'French', accent: 'French', modelId: 'eleven_multilingual_v2' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Yuki', lang: 'Japanese', accent: 'Japanese', modelId: 'eleven_multilingual_v2' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Wei', lang: 'Chinese (Mandarin)', accent: 'Mandarin', modelId: 'eleven_multilingual_v2' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Amira', lang: 'Arabic', accent: 'Arabic', modelId: 'eleven_multilingual_v2' },
-  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Fatima', lang: 'Turkish', accent: 'Turkish', modelId: 'eleven_multilingual_v2' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Ivan', lang: 'Russian', accent: 'Russian', modelId: 'eleven_multilingual_v2' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'Min-jun', lang: 'Korean', accent: 'Korean', modelId: 'eleven_multilingual_v2' },
-  { id: 'cjVigY5qzO86Huf0OWal', name: 'João', lang: 'Portuguese (BR)', accent: 'Brazilian', modelId: 'eleven_multilingual_v2' },
-  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Nour', lang: 'Persian (Farsi)', accent: 'Persian', modelId: 'eleven_multilingual_v2' },
+  // ── English — American ───────────────────────────────────────────────────
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill', lang: 'English (US)', accent: 'American', gender: 'Male' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  { id: 'jsCqWAovK2LkecY7zXl4', name: 'Freya', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  { id: 'z9fAnlkpzviPz146aGWa', name: 'Glinda', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy', lang: 'English (US)', accent: 'American', gender: 'Female' },
+  // ── English — British ────────────────────────────────────────────────────
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', lang: 'English (UK)', accent: 'British', gender: 'Male' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', lang: 'English (UK)', accent: 'British', gender: 'Male' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', lang: 'English (UK)', accent: 'British', gender: 'Male' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', lang: 'English (UK)', accent: 'British', gender: 'Female' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', lang: 'English (UK)', accent: 'British', gender: 'Female' },
+  { id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Michael', lang: 'English (UK)', accent: 'British', gender: 'Male' },
+  // ── English — Australian / Irish / South African ─────────────────────────
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', lang: 'English (AU)', accent: 'Australian', gender: 'Male' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', lang: 'English (AU)', accent: 'Australian', gender: 'Female' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', lang: 'English', accent: 'American (old)', gender: 'Male' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River', lang: 'English', accent: 'Neutral', gender: 'Non-binary' },
+  // ── Indian Languages — Hindi ─────────────────────────────────────────────
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Rahul (Hindi)', lang: 'Hindi', accent: 'Indian (North)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Priya (Hindi)', lang: 'Hindi', accent: 'Indian', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Arjun (Hindi)', lang: 'Hindi', accent: 'Indian', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Kavya (Hindi)', lang: 'Hindi', accent: 'Indian', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Tamil ─────────────────────────────────────────────
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Surya (Tamil)', lang: 'Tamil', accent: 'Indian (South)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Meera (Tamil)', lang: 'Tamil', accent: 'Indian (South)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Telugu ────────────────────────────────────────────
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Vikram (Telugu)', lang: 'Telugu', accent: 'Indian (South)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Ananya (Telugu)', lang: 'Telugu', accent: 'Indian (South)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Bengali ───────────────────────────────────────────
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Aryan (Bengali)', lang: 'Bengali', accent: 'Indian (East)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'jsCqWAovK2LkecY7zXl4', name: 'Riya (Bengali)', lang: 'Bengali', accent: 'Indian (East)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Gujarati ──────────────────────────────────────────
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Dev (Gujarati)', lang: 'Gujarati', accent: 'Indian (West)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'z9fAnlkpzviPz146aGWa', name: 'Nisha (Gujarati)', lang: 'Gujarati', accent: 'Indian (West)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Marathi ───────────────────────────────────────────
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Omkar (Marathi)', lang: 'Marathi', accent: 'Indian (West)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Swati (Marathi)', lang: 'Marathi', accent: 'Indian (West)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Kannada ───────────────────────────────────────────
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Kiran (Kannada)', lang: 'Kannada', accent: 'Indian (South)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Deepa (Kannada)', lang: 'Kannada', accent: 'Indian (South)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Malayalam ─────────────────────────────────────────
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Arun (Malayalam)', lang: 'Malayalam', accent: 'Indian (South)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Lekha (Malayalam)', lang: 'Malayalam', accent: 'Indian (South)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Punjabi ───────────────────────────────────────────
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'Harjeet (Punjabi)', lang: 'Punjabi', accent: 'Indian (North)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Simran (Punjabi)', lang: 'Punjabi', accent: 'Indian (North)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Urdu ──────────────────────────────────────────────
+  { id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Zain (Urdu)', lang: 'Urdu', accent: 'Pakistani/Indian', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'Zara (Urdu)', lang: 'Urdu', accent: 'Pakistani/Indian', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Indian Languages — Odia & Assamese ───────────────────────────────────
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Subhash (Odia)', lang: 'Odia', accent: 'Indian (East)', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'jsCqWAovK2LkecY7zXl4', name: 'Pallabi (Assamese)', lang: 'Assamese', accent: 'Indian (East)', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── Spanish ──────────────────────────────────────────────────────────────
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Diego', lang: 'Spanish (ES)', accent: 'Spanish', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Valentina', lang: 'Spanish (LA)', accent: 'Latin American', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  // ── French, German, Italian, Portuguese ──────────────────────────────────
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Sophie', lang: 'French', accent: 'French', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Hans', lang: 'German', accent: 'German', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Luca', lang: 'Italian', accent: 'Italian', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'João', lang: 'Portuguese (BR)', accent: 'Brazilian', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  // ── East Asian ───────────────────────────────────────────────────────────
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Yuki', lang: 'Japanese', accent: 'Japanese', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Wei', lang: 'Chinese (Mandarin)', accent: 'Mandarin', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'Min-jun', lang: 'Korean', accent: 'Korean', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  // ── Middle East, Slavic, Scandinavian ────────────────────────────────────
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Amira', lang: 'Arabic', accent: 'Arabic', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Fatima', lang: 'Turkish', accent: 'Turkish', gender: 'Female', modelId: 'eleven_multilingual_v2' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Ivan', lang: 'Russian', accent: 'Russian', gender: 'Male', modelId: 'eleven_multilingual_v2' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Nour', lang: 'Persian (Farsi)', accent: 'Persian', gender: 'Female', modelId: 'eleven_multilingual_v2' },
 ];
 
 // ── Google TTS — free, no API key, returns MP3 ────────────────────────────
@@ -141,7 +183,7 @@ async function generateNarrationScript(
 
   const extraHeaders: Record<string, string> =
     provider === 'openrouter'
-      ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'AI Nexus' }
+      ? { 'HTTP-Referer': 'https://v0-nexus99.vercel.app', 'X-Title': 'Vayu Nexus' }
       : {};
 
   const resolvedModel = model || PROVIDER_DEFAULT_MODEL[provider] || 'gpt-4o-mini';

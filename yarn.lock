@@ -2378,6 +2378,7 @@ __metadata:
     better-auth: "npm:^1.1.7"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
+    framer-motion: "npm:^12.42.2"
     lucide-react: "npm:^1.7.0"
     motion: "npm:^12.42.2"
     next: "npm:^16.2.6"

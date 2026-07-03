@@ -20,7 +20,7 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'bearer',
     extraHeaders: {
       'HTTP-Referer': 'https://v0-nexus99.vercel.app',
-      'X-Title': 'AI Nexus',
+      'X-Title': 'Vayu Nexus',
     },
   },
   groq: {
@@ -28,9 +28,10 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'bearer',
   },
   'google-ai-studio': {
-    // Google provides an OpenAI-compatible shim
+    // Google's OpenAI-compatible shim — requires x-goog-api-key header (NOT Bearer).
+    // Works for both AIza... REST keys and AQ.Ab... OAuth tokens.
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    authHeader: 'bearer',
+    authHeader: 'bearer', // overridden in callOpenAICompat for this provider
   },
   'nvidia-nim': {
     baseUrl: 'https://integrate.api.nvidia.com/v1',
@@ -141,30 +142,46 @@ async function callCustom(
   maxTokens: number,
 ): Promise<string> {
   // Parse format: "https://base-url.com|optional-auth-key"
-  // If no "|", treat the whole string as the URL and use no auth
+  // If no "|", treat the whole string as the URL with no auth
   const pipeIdx = rawKey.indexOf('|');
-  const baseUrl  = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
-  const authKey  = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
+  const rawBase = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
+  const authKey = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
 
-  if (!baseUrl.startsWith('http')) {
+  if (!rawBase.startsWith('http')) {
     throw new Error(
       'Custom provider: enter your endpoint as "https://api.example.com|your-api-key" in the API Key field.',
     );
   }
 
-  // Detect if Anthropic — uses x-api-key header
-  const isAnthropic = baseUrl.includes('anthropic.com');
+  // Build the final URL — if the base already ends with /chat/completions,
+  // use it directly; otherwise append /v1/chat/completions
+  const chatPath = rawBase.endsWith('/chat/completions') ? '' : '/v1/chat/completions';
+  const url = `${rawBase}${chatPath}`;
+
+  // Detect provider-specific auth headers
+  const isAnthropic = rawBase.includes('anthropic.com');
+  const isGoogle    = rawBase.includes('googleapis.com') || rawBase.includes('generativelanguage');
   const authHeaders: Record<string, string> = isAnthropic
     ? { 'x-api-key': authKey, 'anthropic-version': '2023-06-01' }
-    : authKey
-      ? { Authorization: `Bearer ${authKey}` }
-      : {};
+    : isGoogle
+      ? { 'x-goog-api-key': authKey }
+      : authKey
+        ? { Authorization: `Bearer ${authKey}` }
+        : {};
 
-  const url = `${baseUrl}/v1/chat/completions`;
+  // Use a sensible model fallback when model is "auto"
+  const resolvedModel = (!model || model === 'auto') ? 'gpt-4o-mini' : model;
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false }),
+    body: JSON.stringify({
+      model: resolvedModel,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: false,
+    }),
   });
 
   const raw = await res.text();

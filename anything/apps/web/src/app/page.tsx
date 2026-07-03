@@ -51,6 +51,7 @@ import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
 import AudioPlayer from '@/components/AudioPlayer';
 import { ReferralPopup } from '@/components/ReferralPopup';
+import { GuideTour } from '@/components/GuideTour';
 import { toast } from 'sonner';
 
 const EMPTY_MSGS: Message[] = [];
@@ -259,21 +260,21 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
     >
       <div className="relative">
         <motion.div
-          animate={{ scale: [1, 1.06, 1], rotate: [0, 2, -2, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="w-20 h-20 md:w-24 md:h-24 bg-black dark:bg-white rounded-3xl flex items-center justify-center shadow-2xl"
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-20 h-20 md:w-24 md:h-24 rounded-3xl overflow-hidden flex items-center justify-center shadow-2xl"
         >
-          <Sparkles size={36} className="text-white dark:text-black" />
+          <img src="/logo.png" alt="Vayu Nexus" className="w-full h-full object-contain" />
         </motion.div>
         <motion.div
-          animate={{ scale: [1, 1.4, 1], opacity: [0.15, 0.4, 0.15] }}
+          animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 2.5, repeat: Infinity }}
-          className="absolute inset-0 bg-black/10 dark:bg-white/10 rounded-3xl -z-10 blur-2xl"
+          className="absolute inset-0 bg-orange-400/20 rounded-3xl -z-10 blur-2xl"
         />
       </div>
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Start a Conversation
+          Welcome to Vayu Nexus
         </h2>
         <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs leading-relaxed">
           Choose a provider, add your API key, then chat. Type{' '}
@@ -431,8 +432,9 @@ function MessageBubble({
                 ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-tl-sm border border-gray-200 dark:border-gray-700 w-full'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-tl-sm border border-gray-200 dark:border-gray-700'
           )}
-          onMouseEnter={() => setHover(true)}
+                  onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
+          onTouchStart={() => setHover(true)}
         >
           <MessageContent message={message} isUser={isUser} />
         </div>
@@ -452,7 +454,7 @@ function MessageBubble({
                   key={title}
                   title={title}
                   onClick={fn}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  className="p-2 md:p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   {icon}
                 </button>
@@ -537,21 +539,24 @@ function ConversationItem({
           onMenuToggle();
         }}
         className={cn(
-          'absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-opacity opacity-0 group-hover:opacity-100',
+          'absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-opacity',
+          // Always visible on mobile (no hover), fade in on desktop hover
+          'opacity-100 md:opacity-0 md:group-hover:opacity-100',
           isActive
             ? 'text-white/70 hover:bg-white/10'
             : 'text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-700'
         )}
       >
-        <MoreHorizontal size={12} />
+        <MoreHorizontal size={13} />
       </button>
       <AnimatePresence>
         {showMenu && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute left-full top-0 ml-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            // Open below the item (works on both mobile and desktop)
+            className="absolute left-0 right-0 top-full mt-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
           >
             {[
               { icon: FileText, label: 'Rename', fn: onRenameStart },
@@ -566,11 +571,11 @@ function ConversationItem({
                   fn();
                 }}
                 className={cn(
-                  'w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
+                  'w-full flex items-center gap-2 px-3 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
                   danger ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'
                 )}
               >
-                <Icon size={12} />
+                <Icon size={14} />
                 {label}
               </button>
             ))}
@@ -1056,13 +1061,13 @@ export default function AIChat() {
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <motion.div
-            animate={{ rotate: [0, 5, -5, 0] }}
+            animate={{ scale: [1, 1.08, 1] }}
             transition={{ duration: 3, repeat: Infinity }}
-            className="w-8 h-8 bg-black dark:bg-white rounded-xl flex items-center justify-center"
+            className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center"
           >
-            <Zap size={16} className="text-white dark:text-black" />
+            <img src="/logo.png" alt="Vayu Nexus" className="w-8 h-8 object-contain" />
           </motion.div>
-          <span className="font-bold text-base tracking-tight">AI Nexus</span>
+          <span className="font-bold text-base tracking-tight">Vayu Nexus</span>
         </div>
         <button
           onClick={() => setShowSidebar(false)}
@@ -1669,7 +1674,7 @@ export default function AIChat() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowSidebar(false)}
+              onClick={() => { setShowSidebar(false); setConvMenuId(null); }}
               className="fixed inset-0 bg-black/40 z-40"
             />
             <motion.aside
@@ -1910,7 +1915,7 @@ export default function AIChat() {
                   }
                   if (e.key === 'Escape') setShowCommandMenu(false);
                 }}
-                placeholder="Message AI Nexus… (⌘+Enter to send, / for commands)"
+                placeholder="Message Vayu Nexus… (⌘+Enter to send, / for commands)"
                 disabled={isGenerating}
                 rows={1}
                 className="flex-1 bg-transparent outline-none resize-none text-sm placeholder-gray-400 dark:placeholder-gray-600 text-gray-900 dark:text-white py-1 max-h-36 scrollbar-thin"
@@ -2071,6 +2076,7 @@ export default function AIChat() {
 
       {/* Referral popup for new users */}
       <ReferralPopup />
+      <GuideTour />
     </div>
   );
 }
