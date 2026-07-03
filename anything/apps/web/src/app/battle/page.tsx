@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Send, RefreshCw, ArrowLeft, Swords, ChevronDown,
   Clock, Zap, RotateCcw, Settings, Trophy, Copy, Check,
@@ -10,7 +10,7 @@ import {
 import Link from 'next/link';
 import { useStore } from '@/utils/store';
 import { PROVIDERS } from '@/constants/providers';
-import { cn } from '@/utils/cn';
+import { cn } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface BattleMsg {

@@ -12,6 +12,7 @@ export interface Message {
   reaction?: 'like' | 'dislike' | null;
   model?: string;
   tokens?: number;
+  images?: string[]; // base64 data URLs for vision attachments
 }
 
 export interface Conversation {

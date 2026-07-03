@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import Link from 'next/link';
+import NextLink from 'next/link';
 import { cn } from '@/lib/utils';
 import {
   Plus,
@@ -46,7 +46,7 @@ import {
   Settings,
   Layers,
   Edit2,
-  Link,
+  Link as LinkIcon,
   Paperclip,
   Swords,
   Code2,
@@ -156,6 +156,20 @@ function parseContent(raw: string): ContentPart[] {
 
 // ─── MESSAGE CONTENT RENDERER ─────────────────────────────────────────────────
 function MessageContent({ message, isUser }: { message: Message; isUser: boolean }) {
+  // Render vision-upload image attachments (stored as base64 data URLs)
+  const attachedImgStrip = message.images && message.images.length > 0 ? (
+    <div className="flex flex-wrap gap-2 mb-2">
+      {message.images.map((src, idx) => (
+        <img
+          key={idx}
+          src={src}
+          alt={`Attachment ${idx + 1}`}
+          className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow"
+        />
+      ))}
+    </div>
+  ) : null;
+
   if (message.type === 'image' && message.url) {
     return (
       <div className="space-y-2">
@@ -245,6 +259,7 @@ function MessageContent({ message, isUser }: { message: Message; isUser: boolean
 
   return (
     <div className={cn('space-y-1', !isUser && hasCode ? 'w-full' : '')}>
+      {attachedImgStrip}
       {parts.map((part, i) =>
         part.type === 'code' ? (
           <CodeBlock key={i} code={part.content} lang={part.lang} />
@@ -902,7 +917,7 @@ export default function AIChat() {
     setAttachedImages([]);
     setShowCommandMenu(false);
     // Show images inline in the user's message bubble
-    addMessage({ role: 'user', content: userText, images: userImages } as Parameters<typeof addMessage>[0]);
+    addMessage({ role: 'user', content: userText, images: userImages });
     setIsGenerating(true);
 
     const apiKey = apiKeys[selectedProvider] ?? '';
@@ -1202,20 +1217,20 @@ export default function AIChat() {
           <span>{conversations.length} chats</span>
           <span>{configuredCount} keys</span>
         </div>
-        <Link
+        <NextLink
           href="/builder"
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
         >
           <Code2 size={14} />
           App Builder
-        </Link>
-        <Link
+        </NextLink>
+        <NextLink
           href="/battle"
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
         >
           <Swords size={14} />
           Model Battle
-        </Link>
+        </NextLink>
         <button
           onClick={() => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
@@ -1593,7 +1608,7 @@ export default function AIChat() {
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                <Link size={11} />
+                <LinkIcon size={11} />
                 Custom Providers ({customProviders.length})
               </h3>
               <button

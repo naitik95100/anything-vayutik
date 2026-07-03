@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Send, RefreshCw, Eye, Code2, MessageSquare, Plus, Trash2,
   ChevronRight, Download, Github, Sparkles, Settings, X, Check,
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useStore } from '@/utils/store';
-import { cn } from '@/utils/cn';
+import { cn } from '@/lib/utils';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
