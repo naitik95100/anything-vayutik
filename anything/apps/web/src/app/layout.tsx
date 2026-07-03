@@ -4,10 +4,11 @@ import './global.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'Anything App',
-  description: 'Created with Anything',
+  title: 'Nexus Vayu',
+  description: 'Nexus Vayu — the open source AI platform. Chat, image generation, audio, code, and more with any AI provider.',
   icons: {
     icon: '/favicon.png',
+    apple: '/logo.png',
   },
 };
 

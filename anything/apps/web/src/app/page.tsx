@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import NextLink from 'next/link';
 import { cn } from '@/lib/utils';
 import {
   Plus,
@@ -26,7 +27,6 @@ import {
   Sun,
   Keyboard,
   Image as ImageIcon,
-  Video as VideoIcon,
   Key,
   MessageSquare,
   MoreHorizontal,
@@ -45,12 +45,19 @@ import {
   Menu,
   Settings,
   Layers,
+  Edit2,
+  Link as LinkIcon,
+  Paperclip,
+  Swords,
+  Code2,
 } from 'lucide-react';
-import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS } from '@/constants/providers';
-import { useStore, type Message, type Conversation } from '@/utils/store';
+import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, detectCustomProvider, type ModelCapability } from '@/constants/providers';
+import { useStore, type Message, type Conversation, type CustomProvider } from '@/utils/store';
 import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
 import AudioPlayer from '@/components/AudioPlayer';
+import { ReferralPopup } from '@/components/ReferralPopup';
+import { GuideTour } from '@/components/GuideTour';
 import { toast } from 'sonner';
 
 const EMPTY_MSGS: Message[] = [];
@@ -149,6 +156,20 @@ function parseContent(raw: string): ContentPart[] {
 
 // ─── MESSAGE CONTENT RENDERER ─────────────────────────────────────────────────
 function MessageContent({ message, isUser }: { message: Message; isUser: boolean }) {
+  // Render vision-upload image attachments (stored as base64 data URLs)
+  const attachedImgStrip = message.images && message.images.length > 0 ? (
+    <div className="flex flex-wrap gap-2 mb-2">
+      {message.images.map((src, idx) => (
+        <img
+          key={idx}
+          src={src}
+          alt={`Attachment ${idx + 1}`}
+          className="w-24 h-24 object-cover rounded-xl border border-white/20 shadow"
+        />
+      ))}
+    </div>
+  ) : null;
+
   if (message.type === 'image' && message.url) {
     return (
       <div className="space-y-2">
@@ -169,40 +190,81 @@ function MessageContent({ message, isUser }: { message: Message; isUser: boolean
       </div>
     );
   }
-  if (message.type === 'video' && message.url) {
-    return (
-      <div className="space-y-2">
-        <p className="text-xs opacity-70 italic">{message.content}</p>
-        <video
-          src={message.url}
-          controls
-          autoPlay
-          loop
-          muted
-          className="rounded-xl w-full max-w-xs md:max-w-sm border border-gray-200 dark:border-gray-700 shadow-lg"
-        />
-      </div>
-    );
-  }
+
   if (message.type === 'audio') {
+    // If we have a real audio URL (from Lyria 2), use native <audio>; otherwise TTS
+    if (message.url) {
+      return (
+        <div className="space-y-2">
+          <p className="text-xs opacity-70 italic mb-1">AI-generated audio</p>
+          {message.content && message.content !== message.url && (
+            <p className="text-xs opacity-60 italic">{message.content}</p>
+          )}
+          <audio
+            src={message.url}
+            controls
+            className="w-full max-w-xs md:max-w-sm rounded-lg"
+          />
+          <a
+            href={message.url}
+            download="ai-audio.wav"
+            className="flex items-center gap-1.5 text-xs opacity-70 hover:opacity-100 transition-opacity"
+          >
+            <Download size={12} />
+            Download audio
+          </a>
+        </div>
+      );
+    }
     return (
       <div className="space-y-2">
-        <p className="text-xs opacity-70 italic mb-2">Generated audio — click play to listen</p>
+        <p className="text-xs opacity-70 italic mb-2">Generated narration — click play to listen</p>
         <AudioPlayer text={message.content} className="max-w-xs md:max-w-sm" />
       </div>
     );
   }
   const parts = parseContent(message.content);
   const hasCode = parts.some((p) => p.type === 'code');
+
+  // Render a text segment — detect inline markdown images ![alt](url) and render them
+  const renderTextSegment = (text: string, key: number) => {
+    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+    const segments: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = imgRegex.exec(text)) !== null) {
+      if (m.index > last) {
+        segments.push(<span key={`t${last}`}>{text.slice(last, m.index)}</span>);
+      }
+      segments.push(
+        <div key={`img${m.index}`} className="my-2">
+          <img
+            src={m[2]}
+            alt={m[1] || 'AI Generated'}
+            className="rounded-xl max-w-xs md:max-w-sm border border-gray-200 dark:border-gray-700 shadow-lg"
+          />
+        </div>,
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) segments.push(<span key={`t${last}`}>{text.slice(last)}</span>);
+    if (segments.length === 0) return <p key={key} className="whitespace-pre-wrap leading-relaxed">{text}</p>;
+    const hasImg = segments.some((s) => s && typeof s === 'object' && 'type' in s);
+    return hasImg ? (
+      <div key={key} className="whitespace-pre-wrap leading-relaxed">{segments}</div>
+    ) : (
+      <p key={key} className="whitespace-pre-wrap leading-relaxed">{segments}</p>
+    );
+  };
+
   return (
     <div className={cn('space-y-1', !isUser && hasCode ? 'w-full' : '')}>
+      {attachedImgStrip}
       {parts.map((part, i) =>
         part.type === 'code' ? (
           <CodeBlock key={i} code={part.content} lang={part.lang} />
         ) : (
-          <p key={i} className="whitespace-pre-wrap leading-relaxed">
-            {part.content}
-          </p>
+          renderTextSegment(part.content, i)
         )
       )}
     </div>
@@ -219,21 +281,21 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
     >
       <div className="relative">
         <motion.div
-          animate={{ scale: [1, 1.06, 1], rotate: [0, 2, -2, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="w-20 h-20 md:w-24 md:h-24 bg-black dark:bg-white rounded-3xl flex items-center justify-center shadow-2xl"
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-20 h-20 md:w-24 md:h-24 rounded-3xl overflow-hidden flex items-center justify-center shadow-2xl"
         >
-          <Sparkles size={36} className="text-white dark:text-black" />
+          <img src="/logo.png" alt="Nexus Vayu" className="w-full h-full object-contain" />
         </motion.div>
         <motion.div
-          animate={{ scale: [1, 1.4, 1], opacity: [0.15, 0.4, 0.15] }}
+          animate={{ scale: [1, 1.5, 1], opacity: [0.2, 0.5, 0.2] }}
           transition={{ duration: 2.5, repeat: Infinity }}
-          className="absolute inset-0 bg-black/10 dark:bg-white/10 rounded-3xl -z-10 blur-2xl"
+          className="absolute inset-0 bg-orange-400/20 rounded-3xl -z-10 blur-2xl"
         />
       </div>
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Start a Conversation
+          Welcome to Nexus Vayu
         </h2>
         <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs leading-relaxed">
           Choose a provider, add your API key, then chat. Type{' '}
@@ -243,9 +305,9 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         {[
-          '/image a neon city',
-          '/video aurora borealis',
+          '/image a neon city at night',
           '/audio explain quantum AI',
+          '/image a majestic mountain landscape',
           'How does React work?',
         ].map((s) => (
           <button
@@ -265,8 +327,7 @@ function EmptyState({ onCmd }: { onCmd: (s: string) => void }) {
 const COMMANDS = [
   { cmd: '/image', label: 'Generate Image', icon: ImageIcon, desc: 'Create an AI image from text' },
   { cmd: '/imagine', label: 'Imagine Scene', icon: Sparkles, desc: 'Visualize any concept' },
-  { cmd: '/video', label: 'Generate Video', icon: VideoIcon, desc: 'Create a short video clip' },
-  { cmd: '/audio', label: 'Generate Audio', icon: Volume2, desc: 'Create spoken audio narration' },
+  { cmd: '/audio', label: 'Generate Audio', icon: Volume2, desc: 'Create spoken audio or narration' },
   { cmd: '/code', label: 'Write Code', icon: Hash, desc: 'Generate code with live preview' },
   { cmd: '/summarize', label: 'Summarize', icon: FileText, desc: 'Summarize text or document' },
   { cmd: '/translate', label: 'Translate', icon: Globe, desc: 'Translate to any language' },
@@ -392,35 +453,32 @@ function MessageBubble({
                 ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-tl-sm border border-gray-200 dark:border-gray-700 w-full'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-tl-sm border border-gray-200 dark:border-gray-700'
           )}
-          onMouseEnter={() => setHover(true)}
+                  onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
+          onPointerDown={() => setHover((h) => !h)}
         >
           <MessageContent message={message} isUser={isUser} />
         </div>
-        <AnimatePresence>
-          {(hover || message.bookmarked || message.reaction) && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className={cn(
-                'flex items-center gap-0.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-1.5 py-1 shadow-md',
-                isUser ? 'flex-row-reverse' : 'flex-row'
-              )}
-            >
-              {actionBtns.map(({ title, icon, fn }) => (
-                <button
-                  key={title}
-                  title={title}
-                  onClick={fn}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
-                >
-                  {icon}
-                </button>
-              ))}
-            </motion.div>
+        <div
+          className={cn(
+            'flex items-center gap-0.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-1.5 py-1 shadow-md relative z-10 transition-all duration-150',
+            isUser ? 'flex-row-reverse' : 'flex-row',
+            (hover || message.bookmarked || message.reaction)
+              ? 'opacity-100 pointer-events-auto translate-y-0'
+              : 'opacity-0 pointer-events-none -translate-y-1'
           )}
-        </AnimatePresence>
+        >
+          {actionBtns.map(({ title, icon, fn }) => (
+            <button
+              key={title}
+              title={title}
+              onPointerDown={(e) => { e.stopPropagation(); fn(); }}
+              className="p-2.5 md:p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation"
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
       </div>
     </motion.div>
   );
@@ -498,21 +556,24 @@ function ConversationItem({
           onMenuToggle();
         }}
         className={cn(
-          'absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-opacity opacity-0 group-hover:opacity-100',
+          'absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-opacity',
+          // Always visible on mobile (no hover), fade in on desktop hover
+          'opacity-100 md:opacity-0 md:group-hover:opacity-100',
           isActive
             ? 'text-white/70 hover:bg-white/10'
             : 'text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-700'
         )}
       >
-        <MoreHorizontal size={12} />
+        <MoreHorizontal size={13} />
       </button>
       <AnimatePresence>
         {showMenu && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute left-full top-0 ml-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            // Open below the item (works on both mobile and desktop)
+            className="absolute left-0 right-0 top-full mt-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
           >
             {[
               { icon: FileText, label: 'Rename', fn: onRenameStart },
@@ -527,11 +588,11 @@ function ConversationItem({
                   fn();
                 }}
                 className={cn(
-                  'w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
+                  'w-full flex items-center gap-2 px-3 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors',
                   danger ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'
                 )}
               >
-                <Icon size={12} />
+                <Icon size={14} />
                 {label}
               </button>
             ))}
@@ -665,6 +726,10 @@ export default function AIChat() {
     deleteApiKey,
     setSelectedProvider,
     updateSettings,
+    customProviders,
+    addCustomProvider,
+    updateCustomProvider,
+    deleteCustomProvider,
   } = useStore();
 
   const [input, setInput] = useState('');
@@ -685,7 +750,15 @@ export default function AIChat() {
   const [renameVal, setRenameVal] = useState('');
   const [showKeyFor, setShowKeyFor] = useState<Record<string, boolean>>({});
   const [convMenuId, setConvMenuId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<Record<string, string>>({});
+  const [selectedModel, setSelectedModel] = useState<Record<string, string>>(
+    () => Object.fromEntries(PROVIDERS.map((p) => [p.id, p.models[0]]))
+  );
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const [cpForm, setCpForm] = useState({ name: '', icon: '', endpoint: '', model: '' });
+  // Image upload for vision models
+  const [attachedImages, setAttachedImages] = useState<{ dataUrl: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -839,41 +912,108 @@ export default function AIChat() {
       setActiveConversation(convId);
     }
     const userText = input.trim();
+    const userImages = attachedImages.map((i) => i.dataUrl);
     setInput('');
+    setAttachedImages([]);
     setShowCommandMenu(false);
-    addMessage({ role: 'user', content: userText });
+    // Show images inline in the user's message bubble
+    addMessage({ role: 'user', content: userText, images: userImages });
     setIsGenerating(true);
+
+    const apiKey = apiKeys[selectedProvider] ?? '';
+
     try {
+      // ── /image command ───────────────────────────────────────────────────
+      const imageMatch = userText.match(/^\/image\s+(.+)/is);
+      if (imageMatch) {
+        const prompt = imageMatch[1].trim();
+        const res = await fetch('/api/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            provider: selectedProvider,
+            apiKey,
+            model: selectedModel[selectedProvider],
+          }),
+        });
+        const data = await res.json() as { url?: string; error?: string; type?: string };
+        if (data.error) {
+          addMessage({ role: 'assistant', content: `Image error: ${data.error}`, type: 'text' });
+        } else {
+          addMessage({ role: 'assistant', content: prompt, type: 'image', url: data.url, model: selectedProvider });
+        }
+        return;
+      }
+
+      // ── /audio command ───────────────────────────────────────────────────
+      const audioMatch = userText.match(/^\/audio\s+(.+)/is);
+      if (audioMatch) {
+        const topic = audioMatch[1].trim();
+        addMessage({ role: 'assistant', content: 'Generating audio...', type: 'text' });
+        const res = await fetch('/api/audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: topic,
+            provider: selectedProvider,
+            apiKey,
+            model: selectedModel[selectedProvider],
+          }),
+        });
+        const data = await res.json() as {
+          dataUrl?: string;
+          script?: string;
+          error?: string;
+          model?: string;
+        };
+        // Remove the "Generating audio..." placeholder
+        const msgs2 = msgsRef.current;
+        const last2 = msgs2[msgs2.length - 1];
+        if (last2?.role === 'assistant') deleteMessage(last2.id);
+        if (data.error) {
+          addMessage({ role: 'assistant', content: `Audio error: ${data.error}`, type: 'text' });
+        } else {
+          // dataUrl = real audio file; script = text for Web Speech API
+          addMessage({
+            role: 'assistant',
+            content: data.script ?? topic,
+            type: 'audio',
+            url: data.dataUrl,
+            model: selectedProvider,
+          });
+        }
+        return;
+      }
+
+      // ── Regular chat ─────────────────────────────────────────────────────
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userText,
           provider: selectedProvider,
-          apiKey: apiKeys[selectedProvider] ?? '',
+          apiKey,
           history: msgsRef.current.slice(-20),
           systemPrompt: settings.systemPrompt,
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
           model: selectedModel[selectedProvider],
+          images: userImages,
         }),
       });
-      if (!res.ok) throw new Error('Request failed');
-      const data = await res.json();
+      const data = await res.json() as { content?: string; type?: 'text' | 'image' | 'audio' | 'code'; url?: string };
       addMessage({
         role: 'assistant',
-        content: data.content,
-        type: data.type,
+        content: data.content ?? '',
+        type: data.type ?? 'text',
         url: data.url,
         model: selectedProvider,
       });
-    } catch {
-      toast.error('Request failed. Please try again.');
-      addMessage({
-        role: 'assistant',
-        content: 'Failed to get a response. Please try again.',
-        type: 'text',
-      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Network error. Check your connection and try again.';
+      toast.error(errMsg);
+      addMessage({ role: 'assistant', content: errMsg, type: 'text' });
     } finally {
       setIsGenerating(false);
     }
@@ -886,6 +1026,7 @@ export default function AIChat() {
     settings,
     selectedModel,
     addMessage,
+    deleteMessage,
     createConversation,
     setActiveConversation,
   ]);
@@ -934,7 +1075,37 @@ export default function AIChat() {
     [searchProvider, providerFilter]
   );
 
-  const currentProvider = PROVIDERS.find((p) => p.id === selectedProvider);
+  // Resolve selected provider — could be a built-in or a user-created custom-* provider.
+  // For custom-* providers we synthesize a minimal provider object so all existing
+  // rendering code (displayName, key input, model list, etc.) keeps working.
+  const customProviderSelected = selectedProvider.startsWith('custom-')
+    ? customProviders.find((cp) => cp.id === selectedProvider)
+    : null;
+  const currentProvider = customProviderSelected
+    ? {
+        id: customProviderSelected.id,
+        name: customProviderSelected.name,
+        company: 'Custom',
+        domain: '',
+        description: `Custom provider: ${customProviderSelected.endpoint.split('|')[0]}`,
+        keyLink: '',
+        placeholderKey: 'https://api.example.com|sk-your-key',
+        badge: '',
+        category: 'text',
+        contextWindow: '',
+        tags: ['Custom'],
+        modelList: [
+          {
+            id: customProviderSelected.model,
+            name: customProviderSelected.model,
+            capabilities: ['text'] as ModelCapability[],
+            contextWindow: '',
+            description: '',
+          },
+        ],
+        models: [customProviderSelected.model],
+      }
+    : PROVIDERS.find((p) => p.id === selectedProvider);
   const configuredCount = Object.values(apiKeys).filter(Boolean).length;
   const fontSizeClass =
     ({ sm: 'text-xs', md: 'text-sm', lg: 'text-base' } as Record<string, string>)[
@@ -956,13 +1127,13 @@ export default function AIChat() {
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <motion.div
-            animate={{ rotate: [0, 5, -5, 0] }}
+            animate={{ scale: [1, 1.08, 1] }}
             transition={{ duration: 3, repeat: Infinity }}
-            className="w-8 h-8 bg-black dark:bg-white rounded-xl flex items-center justify-center"
+            className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center"
           >
-            <Zap size={16} className="text-white dark:text-black" />
+            <img src="/logo.png" alt="Nexus Vayu" className="w-8 h-8 object-contain" />
           </motion.div>
-          <span className="font-bold text-base tracking-tight">AI Nexus</span>
+          <span className="font-bold text-base tracking-tight">Nexus Vayu</span>
         </div>
         <button
           onClick={() => setShowSidebar(false)}
@@ -1046,6 +1217,20 @@ export default function AIChat() {
           <span>{conversations.length} chats</span>
           <span>{configuredCount} keys</span>
         </div>
+        <NextLink
+          href="/builder"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
+        >
+          <Code2 size={14} />
+          App Builder
+        </NextLink>
+        <NextLink
+          href="/battle"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
+        >
+          <Swords size={14} />
+          Model Battle
+        </NextLink>
         <button
           onClick={() => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs transition-colors"
@@ -1102,14 +1287,14 @@ export default function AIChat() {
               <Search size={13} className="text-gray-400 flex-shrink-0" />
               <input
                 type="text"
-                placeholder={`Search ${PROVIDERS.length}+ models...`}
+                placeholder={`Search ${PROVIDERS.length} providers...`}
                 value={searchProvider}
                 onChange={(e) => setSearchProvider(e.target.value)}
                 className="flex-1 bg-transparent text-xs outline-none placeholder-gray-400 dark:placeholder-gray-600 text-gray-900 dark:text-white"
               />
             </div>
             <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {['all', 'text', 'multimodal', 'code', 'image', 'video', 'audio'].map((cat) => (
+              {['all', 'text', 'multimodal', 'code'].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setProviderFilter(cat)}
@@ -1160,7 +1345,24 @@ export default function AIChat() {
                         isSelected ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500'
                       )}
                     >
-                      {provider.company}
+                      {provider.company} · {provider.modelList?.length ?? provider.models.length} models
+                    </div>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {Array.from(
+                        new Set((provider.modelList ?? []).flatMap((m) => m.capabilities ?? []))
+                      ).slice(0, 4).map((cap) => (
+                        <span
+                          key={cap}
+                          className={cn(
+                            'text-[8px] px-1 py-0.5 rounded font-bold uppercase',
+                            isSelected
+                              ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                              : CAPABILITY_COLORS[cap as ModelCapability]
+                          )}
+                        >
+                          {cap}
+                        </span>
+                      ))}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -1194,51 +1396,136 @@ export default function AIChat() {
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 scrollbar-thin">
           {currentProvider && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-                <ProviderIcon
-                  domain={currentProvider.domain}
-                  name={currentProvider.name}
-                  size={34}
-                />
-                <div>
-                  <div className="font-semibold text-sm">{currentProvider.name}</div>
-                  <div className="text-xs text-gray-500">{currentProvider.company}</div>
-                  {currentProvider.contextWindow && (
-                    <div className="text-[10px] text-gray-400">
-                      {currentProvider.contextWindow} context
+              {(() => {
+                // Named custom-* provider selected
+                if (customProviderSelected) {
+                  return (
+                    <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-base font-bold flex-shrink-0">
+                        {customProviderSelected.icon || customProviderSelected.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-sm">{customProviderSelected.name}</div>
+                        <div className="text-xs text-gray-500 font-mono truncate">{customProviderSelected.endpoint.split('|')[0].slice(0, 35)}</div>
+                        <div className="text-[10px] text-gray-400">Model: {customProviderSelected.model}</div>
+                      </div>
                     </div>
+                  );
+                }
+                // Built-in provider with optional auto-detect for generic 'custom'
+                const rawCustomKey = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
+                const customUrl = rawCustomKey.split('|')[0].trim();
+                const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')
+                  ? detectCustomProvider(customUrl)
+                  : null;
+                const displayName = detected ? detected.name : currentProvider.name;
+                const displayDomain = detected ? detected.domain : currentProvider.domain;
+                return (
+                  <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+                    <ProviderIcon domain={displayDomain} name={displayName} size={34} />
+                    <div>
+                      <div className="font-semibold text-sm">{displayName}</div>
+                      <div className="text-xs text-gray-500">
+                        {detected ? `Auto-detected from ${customUrl.slice(0, 40)}` : currentProvider.company}
+                      </div>
+                      {currentProvider.contextWindow && !detected && (
+                        <div className="text-[10px] text-gray-400">{currentProvider.contextWindow} context</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Model list with capability badges */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Models ({currentProvider.modelList?.length ?? currentProvider.models.length})
+                  </label>
+                  <span className="text-[10px] text-gray-400">
+                    {selectedModel[currentProvider.id]
+                      ? `Active: ${(selectedModel[currentProvider.id] ?? '').split('/').pop()}`
+                      : 'Select a model'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto scrollbar-thin pr-0.5">
+                  {(currentProvider.modelList ?? currentProvider.models.map((m) => ({ id: m, name: m, capabilities: ['text' as ModelCapability] }))).map((entry) => {
+                    const isActive = (selectedModel[currentProvider.id] ?? currentProvider.models[0]) === entry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        onClick={() => setSelectedModel((p) => ({ ...p, [currentProvider.id]: entry.id }))}
+                        className={cn(
+                          'w-full text-left p-2.5 rounded-xl border transition-all',
+                          isActive
+                            ? 'bg-black dark:bg-white border-black dark:border-white'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className={cn('text-xs font-semibold truncate', isActive ? 'text-white dark:text-black' : 'text-gray-900 dark:text-white')}>
+                              {entry.name ?? entry.id.split('/').pop()}
+                            </div>
+                            {entry.description && (
+                              <div className={cn('text-[10px] mt-0.5 line-clamp-1', isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400 dark:text-gray-500')}>
+                                {entry.description}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {(entry.capabilities ?? ['text']).map((cap: ModelCapability) => (
+                                <span
+                                  key={cap}
+                                  className={cn(
+                                    'text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide',
+                                    isActive
+                                      ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                                      : CAPABILITY_COLORS[cap]
+                                  )}
+                                >
+                                  {cap}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            {entry.contextWindow && (
+                              <span className={cn('text-[9px] font-mono', isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400')}>
+                                {entry.contextWindow}
+                              </span>
+                            )}
+                            {entry.free && (
+                              <span className={cn('text-[9px] px-1.5 py-0.5 rounded-md font-bold', isActive ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black' : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300')}>
+                                FREE
+                              </span>
+                            )}
+                            {isActive && (
+                              <Check size={11} className="text-white dark:text-black" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Key size={11} />
+                    API Key
+                  </label>
+                  {currentProvider.keyLink && (
+                    <a
+                      href={currentProvider.keyLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-blue-500 hover:text-blue-600 dark:text-blue-400 flex items-center gap-0.5 font-medium"
+                    >
+                      Get API Key
+                      <ChevronRight size={10} />
+                    </a>
                   )}
                 </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 block">
-                  Model
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedModel[currentProvider.id] ?? currentProvider.models[0]}
-                    onChange={(e) =>
-                      setSelectedModel((p) => ({ ...p, [currentProvider.id]: e.target.value }))
-                    }
-                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs text-gray-900 dark:text-white appearance-none outline-none pr-8"
-                  >
-                    {currentProvider.models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
-                  <Key size={11} />
-                  API Key
-                </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
@@ -1278,6 +1565,31 @@ export default function AIChat() {
                     Configured
                   </div>
                 )}
+                {currentProvider.id === 'custom' && (
+                  <div className="mt-2 space-y-2">
+                    <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed space-y-1">
+                      <div className="font-bold">Format:</div>
+                      <code className="block font-mono bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 rounded">
+                        https://api.example.com|your-api-key
+                      </code>
+                      <div className="opacity-80">
+                        Enter endpoint URL and API key separated by <code>|</code>. Works with OpenAI, Anthropic, MuleRouter, Groq, Together AI, Mistral, Ollama, or any OpenAI-compatible API.
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1.5">
+                        Model ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. google/nano-banana-2, gpt-4o, llama3"
+                        value={selectedModel['custom'] ?? ''}
+                        onChange={(e) => setSelectedModel((p) => ({ ...p, custom: e.target.value }))}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-gray-400 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-gray-500 leading-relaxed">{currentProvider.description}</p>
               <div className="flex flex-wrap gap-1.5">
@@ -1292,6 +1604,179 @@ export default function AIChat() {
               </div>
             </div>
           )}
+          {/* ── Multi-custom-provider management ──────────────────���──────────── */}
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                <LinkIcon size={11} />
+                Custom Providers ({customProviders.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setCpForm({ name: '', icon: '', endpoint: '', model: '' });
+                  setEditingCustomId(null);
+                  setShowAddCustom(true);
+                }}
+                className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-opacity"
+              >
+                <Plus size={10} />
+                Add
+              </button>
+            </div>
+
+            {/* Add / Edit form */}
+            {showAddCustom && (
+              <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2.5">
+                <div className="flex gap-2">
+                  <div className="w-14">
+                    <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Icon</label>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      placeholder="🤖"
+                      value={cpForm.icon}
+                      onChange={(e) => setCpForm((f) => ({ ...f, icon: e.target.value }))}
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 text-sm text-center outline-none focus:border-gray-400"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MuleRouter"
+                      value={cpForm.name}
+                      onChange={(e) => setCpForm((f) => ({ ...f, name: e.target.value }))}
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Endpoint + API Key *</label>
+                  <input
+                    type="text"
+                    placeholder="https://api.example.com|sk-your-key"
+                    value={cpForm.endpoint}
+                    onChange={(e) => setCpForm((f) => ({ ...f, endpoint: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 font-mono text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Model ID *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. google/nano-banana-2, gpt-4o"
+                    value={cpForm.model}
+                    onChange={(e) => setCpForm((f) => ({ ...f, model: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 font-mono text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!cpForm.name.trim() || !cpForm.endpoint.trim() || !cpForm.model.trim()) {
+                        toast.error('Name, endpoint, and model ID are required.');
+                        return;
+                      }
+                      if (editingCustomId) {
+                        updateCustomProvider(editingCustomId, {
+                          name: cpForm.name.trim(),
+                          icon: cpForm.icon.trim() || undefined,
+                          endpoint: cpForm.endpoint.trim(),
+                          model: cpForm.model.trim(),
+                        });
+                        // Also update apiKey for this provider so it's routed correctly
+                        setApiKey(editingCustomId, cpForm.endpoint.trim());
+                        setSelectedModel((m) => ({ ...m, [editingCustomId]: cpForm.model.trim() }));
+                        toast.success('Provider updated.');
+                      } else {
+                        const newId = addCustomProvider({
+                          name: cpForm.name.trim(),
+                          icon: cpForm.icon.trim() || undefined,
+                          endpoint: cpForm.endpoint.trim(),
+                          model: cpForm.model.trim(),
+                        });
+                        // Store endpoint as the apiKey for this custom-* provider ID
+                        setApiKey(newId, cpForm.endpoint.trim());
+                        setSelectedModel((m) => ({ ...m, [newId]: cpForm.model.trim() }));
+                        setSelectedProvider(newId);
+                        toast.success('Custom provider added and selected.');
+                      }
+                      setShowAddCustom(false);
+                      setEditingCustomId(null);
+                    }}
+                    className="flex-1 py-2 bg-black dark:bg-white text-white dark:text-black text-xs font-semibold rounded-lg hover:opacity-80 transition-opacity"
+                  >
+                    {editingCustomId ? 'Save Changes' : 'Add Provider'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddCustom(false); setEditingCustomId(null); }}
+                    className="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Existing custom providers list */}
+            <div className="space-y-1.5">
+              {customProviders.length === 0 && !showAddCustom && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-600 text-center py-3">
+                  No custom providers yet. Click Add to connect any OpenAI-compatible API.
+                </p>
+              )}
+              {customProviders.map((cp) => (
+                <div
+                  key={cp.id}
+                  onClick={() => setSelectedProvider(cp.id)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition-all group',
+                    selectedProvider === cp.id
+                      ? 'border-black dark:border-white bg-black/5 dark:bg-white/5'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800/50'
+                  )}
+                >
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {cp.icon || cp.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{cp.name}</div>
+                    <div className="text-[9px] text-gray-400 font-mono truncate">{cp.model}</div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCpForm({ name: cp.name, icon: cp.icon ?? '', endpoint: cp.endpoint, model: cp.model });
+                        setEditingCustomId(cp.id);
+                        setShowAddCustom(true);
+                      }}
+                      className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 size={10} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteCustomProvider(cp.id);
+                        if (selectedProvider === cp.id) setSelectedProvider('custom');
+                        toast.success('Provider removed.');
+                      }}
+                      className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                  {selectedProvider === cp.id && (
+                    <Check size={11} className="text-green-500 flex-shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
             <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
               <Key size={11} />
@@ -1454,7 +1939,7 @@ export default function AIChat() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowSidebar(false)}
+              onClick={() => { setShowSidebar(false); setConvMenuId(null); }}
               className="fixed inset-0 bg-black/40 z-40"
             />
             <motion.aside
@@ -1491,15 +1976,46 @@ export default function AIChat() {
               </button>
             )
           )}
-          {currentProvider && (
+          {currentProvider && (() => {
+            // For custom-* providers, use the store's name/icon directly
+            if (customProviderSelected) {
+              return (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {customProviderSelected.icon || customProviderSelected.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm truncate leading-tight">{customProviderSelected.name}</div>
+                    <div className="text-[10px] text-gray-500 truncate leading-tight hidden md:block">Custom — {customProviderSelected.model}</div>
+                  </div>
+                  {apiKeys[selectedProvider] && (
+                    <span className="hidden sm:flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800 flex-shrink-0">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                      Ready
+                    </span>
+                  )}
+                </div>
+              );
+            }
+            // Built-in provider with auto-detect for generic 'custom'
+            const customRaw = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
+            const customUrl = customRaw.split('|')[0].trim();
+            const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')
+              ? detectCustomProvider(customUrl)
+              : null;
+            return (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <ProviderIcon domain={currentProvider.domain} name={currentProvider.name} size={26} />
+              <ProviderIcon
+                domain={detected ? detected.domain : currentProvider.domain}
+                name={detected ? detected.name : currentProvider.name}
+                size={26}
+              />
               <div className="min-w-0">
                 <div className="font-semibold text-sm truncate leading-tight">
-                  {currentProvider.name}
+                  {detected ? detected.name : currentProvider.name}
                 </div>
                 <div className="text-[10px] text-gray-500 truncate leading-tight hidden md:block">
-                  {currentProvider.company}
+                  {detected ? `Custom — ${detected.name}` : currentProvider.company}
                 </div>
               </div>
               {apiKeys[selectedProvider] && (
@@ -1509,7 +2025,8 @@ export default function AIChat() {
                 </span>
               )}
             </div>
-          )}
+            );
+          })()}
           <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               title="New Chat"
@@ -1636,7 +2153,6 @@ export default function AIChat() {
           <div className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-thin pb-0.5">
             {[
               { label: 'Image', icon: ImageIcon, cmd: '/image ' },
-              { label: 'Video', icon: VideoIcon, cmd: '/video ' },
               { label: 'Audio', icon: Volume2, cmd: '/audio ' },
               { label: 'Code', icon: Hash, cmd: '/code ' },
               { label: 'Templates', icon: Sparkles, cmd: null },
@@ -1663,7 +2179,51 @@ export default function AIChat() {
                 />
               )}
             </AnimatePresence>
+            {/* Attached image previews */}
+            {attachedImages.length > 0 && (
+              <div className="flex gap-2 mb-2 flex-wrap">
+                {attachedImages.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={img.dataUrl}
+                      alt={img.name}
+                      className="w-16 h-16 object-cover rounded-xl border border-gray-200 dark:border-gray-700"
+                    />
+                    <button
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                files.forEach((file) => {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const dataUrl = ev.target?.result as string;
+                    setAttachedImages((prev) => [...prev, { dataUrl, name: file.name }]);
+                  };
+                  reader.readAsDataURL(file);
+                });
+                // Reset input so same file can be re-uploaded
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            />
+
             <div className="flex items-end gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl px-3 py-2 focus-within:border-gray-400 dark:focus-within:border-gray-500 transition-colors shadow-sm">
+              {/* Slash commands */}
               <button
                 onClick={() => {
                   setInput('/');
@@ -1673,6 +2233,19 @@ export default function AIChat() {
                 title="Commands"
               >
                 <Slash size={15} />
+              </button>
+              {/* Image upload */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex-shrink-0 mb-0.5 relative"
+                title="Attach image (vision models)"
+              >
+                <Paperclip size={15} />
+                {attachedImages.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                    {attachedImages.length}
+                  </span>
+                )}
               </button>
               <textarea
                 ref={inputRef}
@@ -1685,7 +2258,7 @@ export default function AIChat() {
                   }
                   if (e.key === 'Escape') setShowCommandMenu(false);
                 }}
-                placeholder="Message AI Nexus… (⌘+Enter to send, / for commands)"
+                placeholder="Message Nexus Vayu… (⌘+Enter to send, / for commands)"
                 disabled={isGenerating}
                 rows={1}
                 className="flex-1 bg-transparent outline-none resize-none text-sm placeholder-gray-400 dark:placeholder-gray-600 text-gray-900 dark:text-white py-1 max-h-36 scrollbar-thin"
@@ -1780,15 +2353,19 @@ export default function AIChat() {
         {showModal === 'shortcuts' && (
           <Modal onClose={() => setShowModal(null)} title="Keyboard Shortcuts">
             <div className="space-y-1">
-              {KEYBOARD_SHORTCUTS.map(({ key, description }) => (
+              {KEYBOARD_SHORTCUTS.map(({ keys, description }) => (
                 <div
-                  key={key}
+                  key={keys.join('+')}
                   className="flex items-center justify-between py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0"
                 >
                   <span className="text-sm text-gray-700 dark:text-gray-300">{description}</span>
-                  <kbd className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 font-mono text-gray-600 dark:text-gray-400">
-                    {key}
-                  </kbd>
+                  <div className="flex items-center gap-1">
+                    {keys.map((k) => (
+                      <kbd key={k} className="text-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 font-mono text-gray-600 dark:text-gray-400">
+                        {k}
+                      </kbd>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1799,20 +2376,20 @@ export default function AIChat() {
         {showModal === 'templates' && (
           <Modal onClose={() => setShowModal(null)} title="Prompt Templates">
             <div className="grid gap-2">
-              {PROMPT_TEMPLATES.map(({ id, label, prompt }) => (
+              {PROMPT_TEMPLATES.map(({ label, value }) => (
                 <motion.button
-                  key={id}
+                  key={label}
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => {
-                    setInput(prompt);
+                    setInput(value);
                     setShowModal(null);
                     inputRef.current?.focus();
                   }}
                   className="w-full text-left p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-gray-400 dark:hover:border-gray-500 transition-all"
                 >
                   <div className="font-semibold text-sm text-gray-900 dark:text-white">{label}</div>
-                  <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{prompt}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{value}</div>
                 </motion.button>
               ))}
             </div>
@@ -1839,6 +2416,10 @@ export default function AIChat() {
           box-sizing: border-box;
         }
       `}</style>
+
+      {/* Referral popup for new users */}
+      <ReferralPopup />
+      <GuideTour />
     </div>
   );
 }

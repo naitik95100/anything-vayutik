@@ -1,0 +1,566 @@
+import { NextResponse } from 'next/server';
+
+function parseError(raw: string, status: number, provider: string): string {
+  try {
+    const p = JSON.parse(raw);
+    const msg = p?.error?.message ?? p?.message ?? p?.detail ?? raw.slice(0, 300);
+    return `${provider} returned ${status}: ${msg}`;
+  } catch {
+    return `${provider} returned ${status}: ${raw.slice(0, 300)}`;
+  }
+}
+
+// ── Together AI — FLUX / SDXL / other models ─────────────────────────────
+async function generateViaTogetherAI(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const imageModel = model || 'black-forest-labs/FLUX.1-schnell-Free';
+  const res = await fetch('https://api.together.xyz/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: imageModel, prompt, n: 1, width: 1024, height: 1024, steps: 4 }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'Together AI'));
+  const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
+  const item = json.data?.[0];
+  if (item?.url) return item.url;
+  if (item?.b64_json) return `data:image/png;base64,${item.b64_json}`;
+  throw new Error('Together AI returned no image data.');
+}
+
+// ── Hugging Face Inference — FLUX / SD models ─────────────────────────────
+async function generateViaHuggingFace(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const hfModel = model || 'black-forest-labs/FLUX.1-schnell';
+  const res = await fetch(`https://router.huggingface.co/hf-inference/models/${hfModel}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ inputs: prompt, parameters: { num_inference_steps: 4 } }),
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new Error(parseError(raw, res.status, 'Hugging Face'));
+  }
+  // HF returns the image as raw binary (blob)
+  const blob = await res.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  const b64 = Buffer.from(arrayBuffer).toString('base64');
+  const mime = blob.type || 'image/jpeg';
+  return `data:${mime};base64,${b64}`;
+}
+
+// ── fal.ai — FLUX, SD3, ControlNet ───────────────────────────────────────
+async function generateViaFal(prompt: string, apiKey: string, model?: string): Promise<string> {
+  const falModel = model || 'fal-ai/flux/schnell';
+  const res = await fetch(`https://fal.run/${falModel}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+    body: JSON.stringify({ prompt, image_size: 'square_hd', num_inference_steps: 4, num_images: 1 }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'fal.ai'));
+  const json = JSON.parse(raw) as { images?: { url?: string; content_type?: string }[]; image?: { url?: string } };
+  const url = json.images?.[0]?.url || json.image?.url;
+  if (url) return url;
+  throw new Error('fal.ai returned no image URL.');
+}
+
+// ── IMAGE MODELS catalog — shown in image picker UI ───────────────────────
+export const FREE_IMAGE_MODELS = [
+  {
+    id: 'pollinations-flux',
+    name: 'FLUX (Pollinations)',
+    provider: 'pollinations',
+    description: 'Black Forest Labs FLUX via Pollinations — completely free, no key',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'pollinations-turbo',
+    name: 'FLUX Turbo (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'turbo',
+    description: 'Faster FLUX variant on Pollinations — free, no key',
+    free: true,
+    quality: 'Fast',
+  },
+  {
+    id: 'pollinations-stable-diffusion',
+    name: 'Stable Diffusion 3.5 (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'stable-diffusion-3.5-large',
+    description: 'Stability AI SD 3.5 via Pollinations — free, no key',
+    free: true,
+    quality: 'Good',
+  },
+  {
+    id: 'pollinations-gptimage',
+    name: 'GPT-Image-1 (Pollinations)',
+    provider: 'pollinations',
+    pollinationsModel: 'gptimage',
+    description: 'OpenAI GPT-Image via Pollinations — free, no key',
+    free: true,
+    quality: 'Premium',
+  },
+  {
+    id: 'replicate-flux-schnell',
+    name: 'FLUX Schnell (Replicate)',
+    provider: 'replicate',
+    description: 'Ultra-fast FLUX Schnell on Replicate — $0.003/image, $10 free trial',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'novita-flux',
+    name: 'FLUX Schnell (Novita AI)',
+    provider: 'novita-ai',
+    description: 'FLUX Schnell on Novita AI — generous free credits',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'nvidia-flux-dev',
+    name: 'FLUX Dev (NVIDIA NIM)',
+    provider: 'nvidia-nim',
+    description: 'FLUX Dev on NVIDIA — 1000 free credits on sign-up',
+    free: true,
+    quality: 'Premium',
+  },
+  {
+    id: 'google-imagen3',
+    name: 'Imagen 3 (Google AI Studio)',
+    provider: 'google-ai-studio',
+    description: "Google's best image model — free tier with API key",
+    free: true,
+    quality: 'Premium',
+  },
+  {
+    id: 'together-flux-schnell',
+    name: 'FLUX Schnell Free (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'black-forest-labs/FLUX.1-schnell-Free',
+    description: 'FLUX Schnell — free tier on Together AI, no credits needed',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'together-flux-dev',
+    name: 'FLUX Dev (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'black-forest-labs/FLUX.1-dev',
+    description: 'FLUX Dev — highest quality via Together AI',
+    free: false,
+    quality: 'Premium',
+  },
+  {
+    id: 'together-sdxl',
+    name: 'Stable Diffusion XL (Together AI)',
+    provider: 'together-ai',
+    togetherModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+    description: 'SDXL base on Together AI',
+    free: false,
+    quality: 'Good',
+  },
+  {
+    id: 'fal-flux-schnell',
+    name: 'FLUX Schnell (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/flux/schnell',
+    description: 'Ultra-fast FLUX Schnell via fal.ai — pay per image',
+    free: false,
+    quality: 'Excellent',
+  },
+  {
+    id: 'fal-flux-dev',
+    name: 'FLUX Dev (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/flux/dev',
+    description: 'High quality FLUX Dev via fal.ai',
+    free: false,
+    quality: 'Premium',
+  },
+  {
+    id: 'fal-sd3',
+    name: 'Stable Diffusion 3 (fal.ai)',
+    provider: 'fal-ai',
+    falModel: 'fal-ai/stable-diffusion-v3-medium',
+    description: 'SD3 Medium via fal.ai',
+    free: false,
+    quality: 'Good',
+  },
+  {
+    id: 'hf-flux-schnell',
+    name: 'FLUX Schnell (Hugging Face)',
+    provider: 'huggingface',
+    hfModel: 'black-forest-labs/FLUX.1-schnell',
+    description: 'FLUX Schnell via HF Inference API — free tier available',
+    free: true,
+    quality: 'Excellent',
+  },
+  {
+    id: 'hf-sdxl',
+    name: 'Stable Diffusion XL (Hugging Face)',
+    provider: 'huggingface',
+    hfModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+    description: 'SDXL via Hugging Face Inference API',
+    free: true,
+    quality: 'Good',
+  },
+];
+
+// ── Pollinations.AI — Truly free, no API key needed ───────────────────────
+// Returns a direct image URL — Pollinations serves images via GET redirect,
+// so we just return the URL and let the browser render it directly.
+function generateViaPollinations(prompt: string, model = 'flux'): string {
+  const encoded = encodeURIComponent(prompt.trim());
+  return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&enhance=true&model=${model}&seed=${Math.floor(Math.random() * 999999)}`;
+}
+
+// ── Custom Provider — Call user's OpenAI-compatible endpoint for images ──
+// Tries /v1/images/generations and /images/generations; falls back to chat
+// completions with a prompt asking the model to return an image URL/base64.
+async function generateViaCustom(prompt: string, rawKey: string, model = 'auto'): Promise<string> {
+  const pipeIdx = rawKey.indexOf('|');
+  const rawBase = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
+  const authKey = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
+
+  if (!rawBase.startsWith('http')) {
+    throw new Error('Custom provider: enter endpoint as "https://api.example.com|your-api-key"');
+  }
+
+  const authHeaders: Record<string, string> = authKey
+    ? { Authorization: `Bearer ${authKey}` }
+    : {};
+
+  const resolvedModel = (!model || model === 'auto') ? undefined : model;
+
+  // 1) Try standard OpenAI-style image generation endpoints
+  const imageEndpoints = rawBase.endsWith('/v1')
+    ? [`${rawBase}/images/generations`]
+    : [
+        `${rawBase}/v1/images/generations`,
+        `${rawBase}/images/generations`,
+      ];
+
+  for (const endpoint of imageEndpoints) {
+    try {
+      const body: Record<string, unknown> = { prompt, n: 1, size: '1024x1024' };
+      if (resolvedModel) body.model = resolvedModel;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000),
+      });
+
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        const raw = await res.text();
+        throw new Error(`Custom provider image error ${res.status}: ${raw.slice(0, 200)}`);
+      }
+
+      const json = await res.json() as {
+        data?: { url?: string; b64_json?: string }[];
+        images?: string[];
+        url?: string;
+        image?: string;
+      };
+
+      const imageUrl = json.data?.[0]?.url ||
+                       json.data?.[0]?.b64_json ||
+                       json.images?.[0] ||
+                       json.url ||
+                       json.image;
+
+      if (imageUrl) {
+        if (typeof imageUrl === 'string' && !imageUrl.startsWith('http') && !imageUrl.startsWith('data:')) {
+          // Bare base64 — detect JPEG vs PNG from header bytes
+          const mime = imageUrl.startsWith('/9j') ? 'image/jpeg' : 'image/png';
+          return `data:${mime};base64,${imageUrl}`;
+        }
+        return imageUrl as string;
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && !err.message.includes('404')) throw err;
+    }
+  }
+
+  // 2) Fall back to Pollinations if the custom endpoint doesn't support image gen
+  throw new Error(
+    'Custom provider does not have an image generation endpoint. Use /image with a provider that supports image generation (Pollinations, Novita AI, NVIDIA NIM, Google AI Studio, or Replicate).',
+  );
+}
+
+// ── Replicate — FLUX Schnell image (free $10 trial credit) ───────────────
+async function generateViaReplicate(prompt: string, apiKey: string): Promise<string> {
+  const createRes = await fetch(
+    'https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        Prefer: 'wait=60',
+      },
+      body: JSON.stringify({ input: { prompt, num_outputs: 1, output_format: 'webp' } }),
+    },
+  );
+  const createRaw = await createRes.text();
+  if (!createRes.ok) throw new Error(parseError(createRaw, createRes.status, 'Replicate'));
+
+  const prediction = JSON.parse(createRaw) as {
+    status?: string;
+    output?: string | string[];
+    urls?: { get?: string };
+    error?: string;
+  };
+
+  if (prediction.status === 'succeeded') {
+    const out = prediction.output;
+    const url = Array.isArray(out) ? out[0] : out;
+    if (url) return url as string;
+  }
+
+  // Poll if not completed inline
+  const pollUrl = prediction.urls?.get;
+  if (!pollUrl) throw new Error(`Replicate returned no poll URL: ${createRaw.slice(0, 300)}`);
+
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const pollRes = await fetch(pollUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const pollJson = await pollRes.json() as {
+      status?: string;
+      output?: string | string[];
+      error?: string;
+    };
+    if (pollJson.status === 'succeeded') {
+      const out = pollJson.output;
+      const url = Array.isArray(out) ? out[0] : out;
+      if (url) return url as string;
+      throw new Error('Replicate succeeded but output has no URL.');
+    }
+    if (pollJson.status === 'failed') {
+      throw new Error(`Replicate image failed: ${pollJson.error ?? 'unknown'}`);
+    }
+  }
+  throw new Error('Replicate image generation timed out.');
+}
+
+// ── Novita AI — async txt2img + polling ───────────────────────────────────
+async function pollNovitaImage(taskId: string, apiKey: string): Promise<string> {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const res = await fetch(`https://api.novita.ai/v3/async/task-result?task_id=${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const json = await res.json() as {
+      task?: { status?: string };
+      images?: { image_url?: string }[];
+      images_encoded?: string[];
+    };
+    const status = json?.task?.status;
+    if (status === 'TASK_STATUS_SUCCEED') {
+      const url = json.images?.[0]?.image_url;
+      const b64 = json.images_encoded?.[0];
+      if (url) return url;
+      if (b64) return `data:image/jpeg;base64,${b64}`;
+      throw new Error('Novita succeeded but returned no image data.');
+    }
+    if (status === 'TASK_STATUS_FAILED') throw new Error('Novita image generation failed.');
+  }
+  throw new Error('Novita image generation timed out after 90 seconds.');
+}
+
+async function generateViaNovita(prompt: string, apiKey: string): Promise<string> {
+  const res = await fetch('https://api.novita.ai/v3/async/txt2img', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      extra: { response_image_type: 'jpeg' },
+      request: {
+        model_name: 'flux1-schnell-fp8_2081908',
+        prompt,
+        negative_prompt: 'blurry, low quality',
+        width: 1024,
+        height: 1024,
+        steps: 4,
+        sampler_name: 'Euler',
+        cfg_scale: 1,
+        n_iter: 1,
+        batch_size: 1,
+        seed: -1,
+      },
+    }),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'Novita'));
+  const json = JSON.parse(raw) as { task_id?: string; message?: string };
+  if (!json.task_id) throw new Error(`Novita did not return a task_id: ${raw.slice(0, 200)}`);
+  return pollNovitaImage(json.task_id, apiKey);
+}
+
+// ── NVIDIA NIM — FLUX Dev ─────────────────────────────────────────────────
+async function generateViaNvidia(prompt: string, apiKey: string): Promise<string> {
+  const res = await fetch('https://integrate.api.nvidia.com/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'black-forest-labs/flux-dev',
+      prompt,
+      n: 1,
+      size: '1024x1024',
+      response_format: 'url',
+    }),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'NVIDIA NIM'));
+  const json = JSON.parse(raw) as { data?: { url?: string; b64_json?: string }[] };
+  const item = json.data?.[0];
+  if (item?.url) return item.url;
+  if (item?.b64_json) return `data:image/jpeg;base64,${item.b64_json}`;
+  throw new Error('NVIDIA NIM returned no image data.');
+}
+
+// ── Google AI Studio — Imagen 3 ───────────────────────────────────────────
+async function generateViaGoogle(prompt: string, apiKey: string): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1, aspectRatio: '1:1' },
+      }),
+    },
+  );
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'Google Imagen'));
+  const json = JSON.parse(raw) as { predictions?: { bytesBase64Encoded?: string; mimeType?: string }[] };
+  const pred = json.predictions?.[0];
+  if (!pred?.bytesBase64Encoded) throw new Error('Google Imagen returned no image data.');
+  return `data:${pred.mimeType ?? 'image/png'};base64,${pred.bytesBase64Encoded}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/image
+// Body: { prompt: string, provider: string, apiKey: string }
+// ─────────────────────��───────────────────────────────────────────────────────
+export async function POST(req: Request) {
+  try {
+    const { prompt, provider, apiKey, imageModel, model, togetherModel, falModel, hfModel } = await req.json() as {
+      prompt: string;
+      provider: string;
+      apiKey: string;
+      imageModel?: string;   // Pollinations variant override
+      model?: string;        // generic model override for custom providers
+      togetherModel?: string;
+      falModel?: string;
+      hfModel?: string;
+    };
+
+    if (!prompt?.trim()) {
+      return NextResponse.json({ error: 'Prompt is required. Usage: /image a sunset over mountains' });
+    }
+
+    let url: string;
+
+    // If imageModel maps to a specific Pollinations variant, use that
+    const pollinationsModelMap: Record<string, string> = {
+      'pollinations-flux':             'flux',
+      'pollinations-turbo':            'turbo',
+      'pollinations-stable-diffusion': 'stable-diffusion-3.5-large',
+      'pollinations-gptimage':         'gptimage',
+    };
+
+    const pollinationsModel = imageModel ? pollinationsModelMap[imageModel] : undefined;
+
+    // Provider-aware routing
+    switch (provider) {
+      case 'novita-ai':
+        if (!apiKey?.trim()) {
+          // Fall back to Pollinations if no key
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaNovita(prompt.trim(), apiKey.trim());
+        }
+        break;
+      case 'nvidia-nim':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaNvidia(prompt.trim(), apiKey.trim());
+        }
+        break;
+      case 'google-ai-studio':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaGoogle(prompt.trim(), apiKey.trim());
+        }
+        break;
+      case 'replicate':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaReplicate(prompt.trim(), apiKey.trim());
+        }
+        break;
+      case 'custom':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaCustom(prompt.trim(), apiKey.trim(), model ?? 'auto');
+        }
+        break;
+      case 'together-ai':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaTogetherAI(prompt.trim(), apiKey.trim(), togetherModel);
+        }
+        break;
+      case 'fal-ai':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaFal(prompt.trim(), apiKey.trim(), falModel);
+        }
+        break;
+      case 'huggingface':
+        if (!apiKey?.trim()) {
+          url = generateViaPollinations(prompt.trim());
+        } else {
+          url = await generateViaHuggingFace(prompt.trim(), apiKey.trim(), hfModel);
+        }
+        break;
+      case 'openrouter':
+      case 'groq':
+      case 'luma-ai':
+      default:
+        // Handle custom-* (named custom providers) the same as 'custom'
+        if (provider.startsWith('custom-')) {
+          if (!apiKey?.trim()) {
+            url = generateViaPollinations(prompt.trim());
+          } else {
+            url = await generateViaCustom(prompt.trim(), apiKey.trim(), model ?? 'auto');
+          }
+          break;
+        }
+        // Pollinations.AI — completely free, no API key or credits required.
+        // If a specific imageModel was requested (pollinations-* IDs), use its model.
+        url = generateViaPollinations(prompt.trim(), pollinationsModel ?? 'flux');
+        break;
+    }
+
+    return NextResponse.json({ url, type: 'image' });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown image generation error.';
+    console.error('[api/image]', msg);
+    return NextResponse.json({ error: msg });
+  }
+}
