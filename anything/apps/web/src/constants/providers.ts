@@ -162,6 +162,36 @@ export const PROVIDERS: Provider[] = [
         description: "Microsoft's small but mighty SLM",
         free: true,
       },
+      // ── Video generation models (via OpenRouter) ──
+      {
+        id: 'x-ai/grok-2-aurora',
+        name: 'Grok 2 Aurora (Image)',
+        capabilities: ['image'],
+        description: 'xAI image generation via Grok 2 Aurora',
+        free: true,
+      },
+      {
+        id: 'alibaba/happyhorse-1.1',
+        name: 'HappyHorse 1.1 (Video)',
+        capabilities: ['video'],
+        description: "Alibaba's video generation model",
+        free: true,
+      },
+      {
+        id: 'google/veo-3-fast',
+        name: 'Veo 3 Fast (Video)',
+        capabilities: ['video'],
+        description: "Google's fast video generation model",
+        free: true,
+      },
+      // ── Audio generation ──
+      {
+        id: 'google/lyria-2',
+        name: 'Lyria 2 (Audio)',
+        capabilities: ['audio'],
+        description: "Google's music and audio generation model",
+        free: true,
+      },
     ],
     get models() { return ids(this.modelList); },
   },
@@ -644,6 +674,31 @@ export const PROVIDERS: Provider[] = [
     ],
     get models() { return ids(this.modelList); },
   },
+
+  // ── 8. CUSTOM PROVIDER ────────────────────────────────────────────────────
+  {
+    id: 'custom',
+    name: 'Custom Provider',
+    company: 'Custom',
+    domain: '',
+    description:
+      'Connect any OpenAI-compatible API. Enter your endpoint URL and API key — the provider is auto-detected from the URL and shown with the correct name and icon.',
+    keyLink: '',
+    placeholderKey: 'https://api.example.com|sk-your-key',
+    badge: 'Custom',
+    category: 'text',
+    contextWindow: 'varies',
+    tags: ['Any Provider', 'OpenAI-Compatible', 'Self-hosted'],
+    modelList: [
+      {
+        id: 'auto',
+        name: 'Auto (detected from URL)',
+        capabilities: ['text', 'code'],
+        description: 'Model is determined by what your endpoint supports',
+      },
+    ],
+    get models() { return ids(this.modelList); },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -658,6 +713,35 @@ export const CAPABILITY_COLORS: Record<ModelCapability, string> = {
   vision:    'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
   reasoning: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
 };
+
+// Detect a known provider name + favicon domain from a custom base URL
+export function detectCustomProvider(url: string): { name: string; domain: string } {
+  const lower = url.toLowerCase();
+  if (lower.includes('openai.com'))        return { name: 'OpenAI',       domain: 'openai.com' };
+  if (lower.includes('anthropic.com'))     return { name: 'Anthropic',    domain: 'anthropic.com' };
+  if (lower.includes('groq.com'))          return { name: 'Groq',         domain: 'groq.com' };
+  if (lower.includes('openrouter.ai'))     return { name: 'OpenRouter',   domain: 'openrouter.ai' };
+  if (lower.includes('googleapis.com'))    return { name: 'Google',       domain: 'google.com' };
+  if (lower.includes('nvidia.com'))        return { name: 'NVIDIA',       domain: 'nvidia.com' };
+  if (lower.includes('novita.ai'))         return { name: 'Novita AI',    domain: 'novita.ai' };
+  if (lower.includes('together.ai') || lower.includes('together.xyz')) return { name: 'Together AI', domain: 'together.ai' };
+  if (lower.includes('mistral.ai'))        return { name: 'Mistral',      domain: 'mistral.ai' };
+  if (lower.includes('cohere.com'))        return { name: 'Cohere',       domain: 'cohere.com' };
+  if (lower.includes('perplexity.ai'))     return { name: 'Perplexity',   domain: 'perplexity.ai' };
+  if (lower.includes('deepseek.com'))      return { name: 'DeepSeek',     domain: 'deepseek.com' };
+  if (lower.includes('huggingface.co'))    return { name: 'HuggingFace',  domain: 'huggingface.co' };
+  if (lower.includes('ollama'))            return { name: 'Ollama',       domain: 'ollama.com' };
+  if (lower.includes('localhost') || lower.includes('127.0.0.1')) return { name: 'Local API', domain: '' };
+  // Try to extract domain from URL
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    const parts = hostname.split('.');
+    const name = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+    return { name, domain: hostname };
+  } catch {
+    return { name: 'Custom API', domain: '' };
+  }
+}
 
 export const PROMPT_TEMPLATES = [
   { label: 'Explain like I\'m 5', value: 'Explain this to me like I\'m 5 years old: ' },

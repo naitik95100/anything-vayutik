@@ -52,6 +52,12 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'x-api-key',
     chatPath: '/chat', // prepended with model path at runtime
   },
+  // Custom provider — baseUrl and auth key are parsed from the apiKey field at runtime
+  // Format: "https://your-endpoint.com|optional-auth-key"
+  custom: {
+    baseUrl: '__custom__',
+    authHeader: 'bearer',
+  },
 };
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -121,6 +127,53 @@ async function callBytez(
     json?.generated_text;
   if (content !== undefined) return String(content);
   throw new Error(`Bytez returned an unexpected response format: ${raw.slice(0, 200)}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom provider — user pastes "https://base-url.com|optional-auth-key"
+// Auto-detects provider from URL; falls back to Bearer auth
+// ─────────────────────────────────────────────────────────────────────────────
+async function callCustom(
+  rawKey: string,
+  model: string,
+  messages: { role: string; content: string }[],
+  temperature: number,
+  maxTokens: number,
+): Promise<string> {
+  // Parse format: "https://base-url.com|optional-auth-key"
+  // If no "|", treat the whole string as the URL and use no auth
+  const pipeIdx = rawKey.indexOf('|');
+  const baseUrl  = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
+  const authKey  = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
+
+  if (!baseUrl.startsWith('http')) {
+    throw new Error(
+      'Custom provider: enter your endpoint as "https://api.example.com|your-api-key" in the API Key field.',
+    );
+  }
+
+  // Detect if Anthropic — uses x-api-key header
+  const isAnthropic = baseUrl.includes('anthropic.com');
+  const authHeaders: Record<string, string> = isAnthropic
+    ? { 'x-api-key': authKey, 'anthropic-version': '2023-06-01' }
+    : authKey
+      ? { Authorization: `Bearer ${authKey}` }
+      : {};
+
+  const url = `${baseUrl}/v1/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens, stream: false }),
+  });
+
+  const raw = await res.text();
+  if (!res.ok) throw new Error(parseError(raw, res.status, 'Custom Provider'));
+
+  const json = JSON.parse(raw);
+  const content = json?.choices?.[0]?.message?.content ?? json?.choices?.[0]?.text;
+  if (content !== undefined) return String(content);
+  throw new Error(`Custom provider returned an unexpected format: ${raw.slice(0, 200)}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -245,7 +298,7 @@ export async function POST(req: Request) {
     const cfg = CONFIGS[provider];
     if (!cfg) {
       return NextResponse.json({
-        content: `Provider "${provider}" is not supported. Choose from: OpenRouter, Groq, Google AI Studio, NVIDIA NIM, Novita AI, LiteLLM, or Bytez.`,
+        content: `Provider "${provider}" is not configured. Supported providers: OpenRouter, Groq, Google AI Studio, NVIDIA NIM, Novita AI, LiteLLM, Bytez, or Custom. Use the Providers tab to select one.`,
         type: 'text',
       });
     }
@@ -277,6 +330,8 @@ export async function POST(req: Request) {
       content = await callBytez(apiKey, model, messages, temperature, maxTokens);
     } else if (provider === 'litellm') {
       content = await callLiteLLM(apiKey, model, messages, temperature, maxTokens);
+    } else if (provider === 'custom') {
+      content = await callCustom(apiKey, model, messages, temperature, maxTokens);
     } else {
       content = await callOpenAICompat(cfg, apiKey, model, messages, temperature, maxTokens, provider);
     }

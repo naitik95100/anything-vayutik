@@ -46,7 +46,7 @@ import {
   Settings,
   Layers,
 } from 'lucide-react';
-import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, type ModelCapability } from '@/constants/providers';
+import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, detectCustomProvider, type ModelCapability } from '@/constants/providers';
 import { useStore, type Message, type Conversation } from '@/utils/store';
 import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
@@ -185,9 +185,33 @@ function MessageContent({ message, isUser }: { message: Message; isUser: boolean
     );
   }
   if (message.type === 'audio') {
+    // If we have a real audio URL (from Lyria 2), use native <audio>; otherwise TTS
+    if (message.url) {
+      return (
+        <div className="space-y-2">
+          <p className="text-xs opacity-70 italic mb-1">AI-generated audio</p>
+          {message.content && message.content !== message.url && (
+            <p className="text-xs opacity-60 italic">{message.content}</p>
+          )}
+          <audio
+            src={message.url}
+            controls
+            className="w-full max-w-xs md:max-w-sm rounded-lg"
+          />
+          <a
+            href={message.url}
+            download="ai-audio.wav"
+            className="flex items-center gap-1.5 text-xs opacity-70 hover:opacity-100 transition-opacity"
+          >
+            <Download size={12} />
+            Download audio
+          </a>
+        </div>
+      );
+    }
     return (
       <div className="space-y-2">
-        <p className="text-xs opacity-70 italic mb-2">Generated audio — click play to listen</p>
+        <p className="text-xs opacity-70 italic mb-2">Generated narration — click play to listen</p>
         <AudioPlayer text={message.content} className="max-w-xs md:max-w-sm" />
       </div>
     );
@@ -890,33 +914,43 @@ export default function AIChat() {
         return;
       }
 
-      // ── /audio command — generate script via LLM, speak via Web Speech API ──
+      // ── /audio command — real audio via Lyria 2 or TTS fallback ────────────
       const audioMatch = userText.match(/^\/audio\s+(.+)/is);
       if (audioMatch) {
         const topic = audioMatch[1].trim();
-        // Get LLM to write a short narration
-        const res = await fetch('/api/chat', {
+        addMessage({ role: 'assistant', content: 'Generating audio...', type: 'text' });
+        const res = await fetch('/api/audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: `Write a clear, engaging spoken-word narration (2-3 paragraphs, no markdown, no headers, plain prose) about: ${topic}`,
+            prompt: topic,
             provider: selectedProvider,
             apiKey,
-            history: [],
-            systemPrompt: 'You write concise spoken narration scripts. No markdown, no bullet points, only flowing prose meant to be read aloud.',
-            temperature: 0.7,
-            maxTokens: 600,
             model: selectedModel[selectedProvider],
           }),
         });
-        const data = await res.json() as { content?: string };
-        const script = data.content ?? topic;
-        addMessage({
-          role: 'assistant',
-          content: script,
-          type: 'audio',
-          model: selectedProvider,
-        });
+        const data = await res.json() as {
+          dataUrl?: string;
+          script?: string;
+          error?: string;
+          model?: string;
+        };
+        // Remove the "Generating audio..." placeholder
+        const msgs2 = msgsRef.current;
+        const last2 = msgs2[msgs2.length - 1];
+        if (last2?.role === 'assistant') deleteMessage(last2.id);
+        if (data.error) {
+          addMessage({ role: 'assistant', content: `Audio error: ${data.error}`, type: 'text' });
+        } else {
+          // dataUrl = real audio file; script = text for Web Speech API
+          addMessage({
+            role: 'assistant',
+            content: data.script ?? topic,
+            type: 'audio',
+            url: data.dataUrl,
+            model: selectedProvider,
+          });
+        }
         return;
       }
 
@@ -1285,22 +1319,30 @@ export default function AIChat() {
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 scrollbar-thin">
           {currentProvider && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-                <ProviderIcon
-                  domain={currentProvider.domain}
-                  name={currentProvider.name}
-                  size={34}
-                />
-                <div>
-                  <div className="font-semibold text-sm">{currentProvider.name}</div>
-                  <div className="text-xs text-gray-500">{currentProvider.company}</div>
-                  {currentProvider.contextWindow && (
-                    <div className="text-[10px] text-gray-400">
-                      {currentProvider.contextWindow} context
+              {(() => {
+                // For custom provider, auto-detect the provider from the URL in the key field
+                const rawCustomKey = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
+                const customUrl = rawCustomKey.split('|')[0].trim();
+                const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')
+                  ? detectCustomProvider(customUrl)
+                  : null;
+                const displayName = detected ? detected.name : currentProvider.name;
+                const displayDomain = detected ? detected.domain : currentProvider.domain;
+                return (
+                  <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+                    <ProviderIcon domain={displayDomain} name={displayName} size={34} />
+                    <div>
+                      <div className="font-semibold text-sm">{displayName}</div>
+                      <div className="text-xs text-gray-500">
+                        {detected ? `Auto-detected from ${customUrl.slice(0, 40)}` : currentProvider.company}
+                      </div>
+                      {currentProvider.contextWindow && !detected && (
+                        <div className="text-[10px] text-gray-400">{currentProvider.contextWindow} context</div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
               {/* Model list with capability badges */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1429,6 +1471,34 @@ export default function AIChat() {
                   <div className="flex items-center gap-1 mt-1.5 text-[10px] text-green-600 dark:text-green-400">
                     <Check size={10} />
                     Configured
+                  </div>
+                )}
+                {currentProvider.id === 'custom' && (
+                  <div className="mt-2 space-y-2">
+                    <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed space-y-1">
+                      <div className="font-bold">Format:</div>
+                      <code className="block font-mono bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 rounded">
+                        https://api.example.com|your-api-key
+                      </code>
+                      <div className="opacity-80">
+                        Enter your endpoint URL and API key separated by <code>|</code>. The provider is automatically detected from the URL and shown with its icon and name above.
+                      </div>
+                      <div className="opacity-80">
+                        Works with: OpenAI, Anthropic, Groq, Together AI, Mistral, Ollama (localhost), or any OpenAI-compatible API.
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1.5">
+                        Model ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. gpt-4o, claude-3-5-sonnet-20241022, llama3"
+                        value={selectedModel['custom'] ?? ''}
+                        onChange={(e) => setSelectedModel((p) => ({ ...p, custom: e.target.value }))}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-gray-400 font-mono"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1644,15 +1714,25 @@ export default function AIChat() {
               </button>
             )
           )}
-          {currentProvider && (
+          {currentProvider && (() => {
+            const customRaw = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
+            const customUrl = customRaw.split('|')[0].trim();
+            const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')
+              ? detectCustomProvider(customUrl)
+              : null;
+            return (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <ProviderIcon domain={currentProvider.domain} name={currentProvider.name} size={26} />
+              <ProviderIcon
+                domain={detected ? detected.domain : currentProvider.domain}
+                name={detected ? detected.name : currentProvider.name}
+                size={26}
+              />
               <div className="min-w-0">
                 <div className="font-semibold text-sm truncate leading-tight">
-                  {currentProvider.name}
+                  {detected ? detected.name : currentProvider.name}
                 </div>
                 <div className="text-[10px] text-gray-500 truncate leading-tight hidden md:block">
-                  {currentProvider.company}
+                  {detected ? `Custom — ${detected.name}` : currentProvider.company}
                 </div>
               </div>
               {apiKeys[selectedProvider] && (
@@ -1662,7 +1742,8 @@ export default function AIChat() {
                 </span>
               )}
             </div>
-          )}
+            );
+          })()}
           <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
               title="New Chat"
