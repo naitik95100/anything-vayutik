@@ -51,6 +51,7 @@ import { useStore, type Message, type Conversation } from '@/utils/store';
 import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
 import AudioPlayer from '@/components/AudioPlayer';
+import { ReferralPopup } from '@/components/ReferralPopup';
 import { toast } from 'sonner';
 
 const EMPTY_MSGS: Message[] = [];
@@ -2073,6 +2074,9 @@ export default function AIChat() {
           box-sizing: border-box;
         }
       `}</style>
+
+      {/* Referral popup for new users */}
+      <ReferralPopup />
     </div>
   );
 }
