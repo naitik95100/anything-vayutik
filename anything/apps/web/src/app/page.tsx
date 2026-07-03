@@ -44,9 +44,11 @@ import {
   Menu,
   Settings,
   Layers,
+  Edit2,
+  Link,
 } from 'lucide-react';
 import { PROVIDERS, PROMPT_TEMPLATES, KEYBOARD_SHORTCUTS, CAPABILITY_COLORS, detectCustomProvider, type ModelCapability } from '@/constants/providers';
-import { useStore, type Message, type Conversation } from '@/utils/store';
+import { useStore, type Message, type Conversation, type CustomProvider } from '@/utils/store';
 import { formatTime, currentISOString } from '@/utils/dates';
 import CodeBlock from '@/components/CodeBlock';
 import AudioPlayer from '@/components/AudioPlayer';
@@ -434,34 +436,30 @@ function MessageBubble({
           )}
                   onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
-          onTouchStart={() => setHover(true)}
+          onPointerDown={() => setHover((h) => !h)}
         >
           <MessageContent message={message} isUser={isUser} />
         </div>
-        <AnimatePresence>
-          {(hover || message.bookmarked || message.reaction) && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className={cn(
-                'flex items-center gap-0.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-1.5 py-1 shadow-md',
-                isUser ? 'flex-row-reverse' : 'flex-row'
-              )}
-            >
-              {actionBtns.map(({ title, icon, fn }) => (
-                <button
-                  key={title}
-                  title={title}
-                  onClick={fn}
-                  className="p-2 md:p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
-                >
-                  {icon}
-                </button>
-              ))}
-            </motion.div>
+        <div
+          className={cn(
+            'flex items-center gap-0.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-1.5 py-1 shadow-md relative z-10 transition-all duration-150',
+            isUser ? 'flex-row-reverse' : 'flex-row',
+            (hover || message.bookmarked || message.reaction)
+              ? 'opacity-100 pointer-events-auto translate-y-0'
+              : 'opacity-0 pointer-events-none -translate-y-1'
           )}
-        </AnimatePresence>
+        >
+          {actionBtns.map(({ title, icon, fn }) => (
+            <button
+              key={title}
+              title={title}
+              onPointerDown={(e) => { e.stopPropagation(); fn(); }}
+              className="p-2.5 md:p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors touch-manipulation"
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
       </div>
     </motion.div>
   );
@@ -709,6 +707,10 @@ export default function AIChat() {
     deleteApiKey,
     setSelectedProvider,
     updateSettings,
+    customProviders,
+    addCustomProvider,
+    updateCustomProvider,
+    deleteCustomProvider,
   } = useStore();
 
   const [input, setInput] = useState('');
@@ -732,6 +734,9 @@ export default function AIChat() {
   const [selectedModel, setSelectedModel] = useState<Record<string, string>>(
     () => Object.fromEntries(PROVIDERS.map((p) => [p.id, p.models[0]]))
   );
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const [cpForm, setCpForm] = useState({ name: '', icon: '', endpoint: '', model: '' });
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -900,7 +905,12 @@ export default function AIChat() {
         const res = await fetch('/api/image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, provider: selectedProvider, apiKey }),
+          body: JSON.stringify({
+            prompt,
+            provider: selectedProvider,
+            apiKey,
+            model: selectedModel[selectedProvider],
+          }),
         });
         const data = await res.json() as { url?: string; error?: string; type?: string };
         if (data.error) {
@@ -1039,7 +1049,37 @@ export default function AIChat() {
     [searchProvider, providerFilter]
   );
 
-  const currentProvider = PROVIDERS.find((p) => p.id === selectedProvider);
+  // Resolve selected provider — could be a built-in or a user-created custom-* provider.
+  // For custom-* providers we synthesize a minimal provider object so all existing
+  // rendering code (displayName, key input, model list, etc.) keeps working.
+  const customProviderSelected = selectedProvider.startsWith('custom-')
+    ? customProviders.find((cp) => cp.id === selectedProvider)
+    : null;
+  const currentProvider = customProviderSelected
+    ? {
+        id: customProviderSelected.id,
+        name: customProviderSelected.name,
+        company: 'Custom',
+        domain: '',
+        description: `Custom provider: ${customProviderSelected.endpoint.split('|')[0]}`,
+        keyLink: '',
+        placeholderKey: 'https://api.example.com|sk-your-key',
+        badge: '',
+        category: 'text',
+        contextWindow: '',
+        tags: ['Custom'],
+        modelList: [
+          {
+            id: customProviderSelected.model,
+            name: customProviderSelected.model,
+            capabilities: ['text'] as ModelCapability[],
+            contextWindow: '',
+            description: '',
+          },
+        ],
+        models: [customProviderSelected.model],
+      }
+    : PROVIDERS.find((p) => p.id === selectedProvider);
   const configuredCount = Object.values(apiKeys).filter(Boolean).length;
   const fontSizeClass =
     ({ sm: 'text-xs', md: 'text-sm', lg: 'text-base' } as Record<string, string>)[
@@ -1317,7 +1357,22 @@ export default function AIChat() {
           {currentProvider && (
             <div className="space-y-3">
               {(() => {
-                // For custom provider, auto-detect the provider from the URL in the key field
+                // Named custom-* provider selected
+                if (customProviderSelected) {
+                  return (
+                    <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-base font-bold flex-shrink-0">
+                        {customProviderSelected.icon || customProviderSelected.name.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-sm">{customProviderSelected.name}</div>
+                        <div className="text-xs text-gray-500 font-mono truncate">{customProviderSelected.endpoint.split('|')[0].slice(0, 35)}</div>
+                        <div className="text-[10px] text-gray-400">Model: {customProviderSelected.model}</div>
+                      </div>
+                    </div>
+                  );
+                }
+                // Built-in provider with optional auto-detect for generic 'custom'
                 const rawCustomKey = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
                 const customUrl = rawCustomKey.split('|')[0].trim();
                 const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')
@@ -1478,10 +1533,7 @@ export default function AIChat() {
                         https://api.example.com|your-api-key
                       </code>
                       <div className="opacity-80">
-                        Enter your endpoint URL and API key separated by <code>|</code>. The provider is automatically detected from the URL and shown with its icon and name above.
-                      </div>
-                      <div className="opacity-80">
-                        Works with: OpenAI, Anthropic, Groq, Together AI, Mistral, Ollama (localhost), or any OpenAI-compatible API.
+                        Enter endpoint URL and API key separated by <code>|</code>. Works with OpenAI, Anthropic, MuleRouter, Groq, Together AI, Mistral, Ollama, or any OpenAI-compatible API.
                       </div>
                     </div>
                     <div>
@@ -1490,7 +1542,7 @@ export default function AIChat() {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. gpt-4o, claude-3-5-sonnet-20241022, llama3"
+                        placeholder="e.g. google/nano-banana-2, gpt-4o, llama3"
                         value={selectedModel['custom'] ?? ''}
                         onChange={(e) => setSelectedModel((p) => ({ ...p, custom: e.target.value }))}
                         className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-gray-400 font-mono"
@@ -1512,6 +1564,179 @@ export default function AIChat() {
               </div>
             </div>
           )}
+          {/* ── Multi-custom-provider management ─────────────────────────────── */}
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                <Link size={11} />
+                Custom Providers ({customProviders.length})
+              </h3>
+              <button
+                onClick={() => {
+                  setCpForm({ name: '', icon: '', endpoint: '', model: '' });
+                  setEditingCustomId(null);
+                  setShowAddCustom(true);
+                }}
+                className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:opacity-80 transition-opacity"
+              >
+                <Plus size={10} />
+                Add
+              </button>
+            </div>
+
+            {/* Add / Edit form */}
+            {showAddCustom && (
+              <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2.5">
+                <div className="flex gap-2">
+                  <div className="w-14">
+                    <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Icon</label>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      placeholder="🤖"
+                      value={cpForm.icon}
+                      onChange={(e) => setCpForm((f) => ({ ...f, icon: e.target.value }))}
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 text-sm text-center outline-none focus:border-gray-400"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MuleRouter"
+                      value={cpForm.name}
+                      onChange={(e) => setCpForm((f) => ({ ...f, name: e.target.value }))}
+                      className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Endpoint + API Key *</label>
+                  <input
+                    type="text"
+                    placeholder="https://api.example.com|sk-your-key"
+                    value={cpForm.endpoint}
+                    onChange={(e) => setCpForm((f) => ({ ...f, endpoint: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 font-mono text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">Model ID *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. google/nano-banana-2, gpt-4o"
+                    value={cpForm.model}
+                    onChange={(e) => setCpForm((f) => ({ ...f, model: e.target.value }))}
+                    className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs outline-none focus:border-gray-400 font-mono text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!cpForm.name.trim() || !cpForm.endpoint.trim() || !cpForm.model.trim()) {
+                        toast.error('Name, endpoint, and model ID are required.');
+                        return;
+                      }
+                      if (editingCustomId) {
+                        updateCustomProvider(editingCustomId, {
+                          name: cpForm.name.trim(),
+                          icon: cpForm.icon.trim() || undefined,
+                          endpoint: cpForm.endpoint.trim(),
+                          model: cpForm.model.trim(),
+                        });
+                        // Also update apiKey for this provider so it's routed correctly
+                        setApiKey(editingCustomId, cpForm.endpoint.trim());
+                        setSelectedModel((m) => ({ ...m, [editingCustomId]: cpForm.model.trim() }));
+                        toast.success('Provider updated.');
+                      } else {
+                        const newId = addCustomProvider({
+                          name: cpForm.name.trim(),
+                          icon: cpForm.icon.trim() || undefined,
+                          endpoint: cpForm.endpoint.trim(),
+                          model: cpForm.model.trim(),
+                        });
+                        // Store endpoint as the apiKey for this custom-* provider ID
+                        setApiKey(newId, cpForm.endpoint.trim());
+                        setSelectedModel((m) => ({ ...m, [newId]: cpForm.model.trim() }));
+                        setSelectedProvider(newId);
+                        toast.success('Custom provider added and selected.');
+                      }
+                      setShowAddCustom(false);
+                      setEditingCustomId(null);
+                    }}
+                    className="flex-1 py-2 bg-black dark:bg-white text-white dark:text-black text-xs font-semibold rounded-lg hover:opacity-80 transition-opacity"
+                  >
+                    {editingCustomId ? 'Save Changes' : 'Add Provider'}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddCustom(false); setEditingCustomId(null); }}
+                    className="px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Existing custom providers list */}
+            <div className="space-y-1.5">
+              {customProviders.length === 0 && !showAddCustom && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-600 text-center py-3">
+                  No custom providers yet. Click Add to connect any OpenAI-compatible API.
+                </p>
+              )}
+              {customProviders.map((cp) => (
+                <div
+                  key={cp.id}
+                  onClick={() => setSelectedProvider(cp.id)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition-all group',
+                    selectedProvider === cp.id
+                      ? 'border-black dark:border-white bg-black/5 dark:bg-white/5'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800/50'
+                  )}
+                >
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {cp.icon || cp.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{cp.name}</div>
+                    <div className="text-[9px] text-gray-400 font-mono truncate">{cp.model}</div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCpForm({ name: cp.name, icon: cp.icon ?? '', endpoint: cp.endpoint, model: cp.model });
+                        setEditingCustomId(cp.id);
+                        setShowAddCustom(true);
+                      }}
+                      className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 size={10} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteCustomProvider(cp.id);
+                        if (selectedProvider === cp.id) setSelectedProvider('custom');
+                        toast.success('Provider removed.');
+                      }}
+                      className="p-1 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                  {selectedProvider === cp.id && (
+                    <Check size={11} className="text-green-500 flex-shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
             <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
               <Key size={11} />
@@ -1712,6 +1937,27 @@ export default function AIChat() {
             )
           )}
           {currentProvider && (() => {
+            // For custom-* providers, use the store's name/icon directly
+            if (customProviderSelected) {
+              return (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {customProviderSelected.icon || customProviderSelected.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm truncate leading-tight">{customProviderSelected.name}</div>
+                    <div className="text-[10px] text-gray-500 truncate leading-tight hidden md:block">Custom — {customProviderSelected.model}</div>
+                  </div>
+                  {apiKeys[selectedProvider] && (
+                    <span className="hidden sm:flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800 flex-shrink-0">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                      Ready
+                    </span>
+                  )}
+                </div>
+              );
+            }
+            // Built-in provider with auto-detect for generic 'custom'
             const customRaw = currentProvider.id === 'custom' ? (apiKeys['custom'] ?? '') : '';
             const customUrl = customRaw.split('|')[0].trim();
             const detected = currentProvider.id === 'custom' && customUrl.startsWith('http')

@@ -34,9 +34,11 @@ const CONFIGS: Record<string, ProviderConfig> = {
     authHeader: 'bearer', // overridden in callOpenAICompat for this provider
   },
   'nvidia-nim': {
+    // Base already includes /v1, so chatPath must be just /chat/completions
+    // Final URL = https://integrate.api.nvidia.com/v1/chat/completions
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     authHeader: 'bearer',
-    chatPath: '/chat/completions', // base already has /v1, so final = /v1/chat/completions
+    chatPath: '/chat/completions',
   },
   'novita-ai': {
     baseUrl: 'https://api.novita.ai/v3/openai',
@@ -141,8 +143,8 @@ async function callCustom(
   temperature: number,
   maxTokens: number,
 ): Promise<string> {
-  // Parse format: "https://base-url.com|optional-auth-key"
-  // If no "|", treat the whole string as the URL with no auth
+  // Format: "https://base-url.com|your-api-key"  (pipe separates URL from key)
+  // The URL may already include a path — we detect whether to append /v1/chat/completions
   const pipeIdx = rawKey.indexOf('|');
   const rawBase = (pipeIdx > -1 ? rawKey.slice(0, pipeIdx) : rawKey).trim().replace(/\/$/, '');
   const authKey = pipeIdx > -1 ? rawKey.slice(pipeIdx + 1).trim() : '';
@@ -152,11 +154,6 @@ async function callCustom(
       'Custom provider: enter your endpoint as "https://api.example.com|your-api-key" in the API Key field.',
     );
   }
-
-  // Build the final URL — if the base already ends with /chat/completions,
-  // use it directly; otherwise append /v1/chat/completions
-  const chatPath = rawBase.endsWith('/chat/completions') ? '' : '/v1/chat/completions';
-  const url = `${rawBase}${chatPath}`;
 
   // Detect provider-specific auth headers
   const isAnthropic = rawBase.includes('anthropic.com');
@@ -169,28 +166,59 @@ async function callCustom(
         ? { Authorization: `Bearer ${authKey}` }
         : {};
 
-  // Use a sensible model fallback when model is "auto"
+  // Use a sensible model fallback when model is "auto" or empty
   const resolvedModel = (!model || model === 'auto') ? 'gpt-4o-mini' : model;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({
-      model: resolvedModel,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: false,
-    }),
+  // Try candidate URL paths in priority order.
+  // If the base already ends with /chat/completions, use it directly.
+  // Otherwise try /v1/chat/completions first (standard OpenAI), then bare /chat/completions
+  // (some providers like MuleRouter omit the /v1 prefix at the base level).
+  let candidateUrls: string[];
+  if (rawBase.endsWith('/chat/completions')) {
+    candidateUrls = [rawBase];
+  } else if (rawBase.endsWith('/v1')) {
+    candidateUrls = [`${rawBase}/chat/completions`];
+  } else {
+    candidateUrls = [
+      `${rawBase}/v1/chat/completions`,
+      `${rawBase}/chat/completions`,
+    ];
+  }
+
+  const body = JSON.stringify({
+    model: resolvedModel,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+    stream: false,
   });
 
-  const raw = await res.text();
-  if (!res.ok) throw new Error(parseError(raw, res.status, 'Custom Provider'));
+  let lastErr = '';
+  for (const url of candidateUrls) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body,
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      lastErr = parseError(raw, res.status, 'Custom Provider');
+      // If it's a 404, try the next candidate URL
+      if (res.status === 404) continue;
+      // Any other error (401, 400, 500) — throw immediately, not a path problem
+      throw new Error(lastErr);
+    }
+    const json = JSON.parse(raw);
+    const content =
+      json?.choices?.[0]?.message?.content ??
+      json?.choices?.[0]?.text ??
+      json?.response ??
+      json?.content;
+    if (content !== undefined) return String(content);
+    throw new Error(`Custom provider returned an unexpected format: ${raw.slice(0, 200)}`);
+  }
 
-  const json = JSON.parse(raw);
-  const content = json?.choices?.[0]?.message?.content ?? json?.choices?.[0]?.text;
-  if (content !== undefined) return String(content);
-  throw new Error(`Custom provider returned an unexpected format: ${raw.slice(0, 200)}`);
+  throw new Error(lastErr || 'Custom provider: all endpoint paths returned 404. Check your base URL.');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +347,9 @@ export async function POST(req: Request) {
     }
 
     // ── Guard: unknown provider ────────────────────────────────────────────
-    const cfg = CONFIGS[provider];
+    // Allow both "custom" and "custom-*" (named custom providers)
+    const isCustom = provider === 'custom' || provider.startsWith('custom-');
+    const cfg = CONFIGS[provider] ?? (isCustom ? CONFIGS.custom : undefined);
     if (!cfg) {
       return NextResponse.json({
         content: `Provider "${provider}" is not configured. Supported providers: OpenRouter, Groq, Google AI Studio, NVIDIA NIM, Novita AI, LiteLLM, Bytez, or Custom. Use the Providers tab to select one.`,
@@ -359,7 +389,7 @@ export async function POST(req: Request) {
       content = await callBytez(apiKey, model, messages, temperature, maxTokens);
     } else if (provider === 'litellm') {
       content = await callLiteLLM(apiKey, model, messages, temperature, maxTokens);
-    } else if (provider === 'custom') {
+    } else if (isCustom) {
       content = await callCustom(apiKey, model, messages, temperature, maxTokens);
     } else {
       content = await callOpenAICompat(cfg, apiKey, model, messages, temperature, maxTokens, provider);

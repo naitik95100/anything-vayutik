@@ -35,12 +35,21 @@ export interface AppSettings {
   streamMode: boolean;
 }
 
+export interface CustomProvider {
+  id: string;         // unique slug e.g. "custom-1"
+  name: string;       // display name e.g. "MuleRouter"
+  icon?: string;      // optional emoji or single character icon
+  endpoint: string;   // "https://api.example.com|sk-key"
+  model: string;      // default model ID e.g. "google/nano-banana-2"
+}
+
 interface AppState {
   conversations: Conversation[];
   activeConversationId: string | null;
   apiKeys: Record<string, string>;
   selectedProvider: string;
   settings: AppSettings;
+  customProviders: CustomProvider[];
 
   // Conversation actions
   createConversation: (provider?: string) => string;
@@ -65,6 +74,11 @@ interface AppState {
   // Provider & settings actions
   setSelectedProvider: (provider: string) => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
+
+  // Custom provider actions
+  addCustomProvider: (cp: Omit<CustomProvider, 'id'>) => string;
+  updateCustomProvider: (id: string, updates: Partial<Omit<CustomProvider, 'id'>>) => void;
+  deleteCustomProvider: (id: string) => void;
 }
 
 function generateId(): string {
@@ -83,6 +97,7 @@ export const useStore = create<AppState>()(
       activeConversationId: null,
       apiKeys: {},
       selectedProvider: 'google-gemini',
+      customProviders: [],
       settings: {
         temperature: 0.7,
         maxTokens: 2048,
@@ -252,6 +267,27 @@ export const useStore = create<AppState>()(
 
       updateSettings: (newSettings) => {
         set((state) => ({ settings: { ...state.settings, ...newSettings } }));
+      },
+
+      addCustomProvider: (cp) => {
+        const id = `custom-${Date.now().toString(36)}`;
+        const newCp: CustomProvider = { ...cp, id };
+        set((state) => ({ customProviders: [...state.customProviders, newCp] }));
+        return id;
+      },
+
+      updateCustomProvider: (id, updates) => {
+        set((state) => ({
+          customProviders: state.customProviders.map((cp) =>
+            cp.id === id ? { ...cp, ...updates } : cp
+          ),
+        }));
+      },
+
+      deleteCustomProvider: (id) => {
+        set((state) => ({
+          customProviders: state.customProviders.filter((cp) => cp.id !== id),
+        }));
       },
     }),
     {
