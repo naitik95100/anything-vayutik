@@ -1,69 +1,178 @@
-// Map every provider ID (from the frontend) to its OpenAI-compatible base URL.
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider base URLs. Every key is the `id` from providers.ts.
+// The base URL already includes any prefix that belongs before /v1/...
+// so the final call is always: baseUrl + "/v1/chat/completions"
+// (unless overridden in CUSTOM_PATH below).
+// ─────────────────────────────────────────────────────────────────────────────
 const PROVIDER_BASE_URLS: Record<string, string> = {
-  'openai-gpt4o':    'https://api.openai.com',
-  openai:            'https://api.openai.com',
-  'anthropic-claude':'https://api.anthropic.com',
-  anthropic:         'https://api.anthropic.com',
-  // Google Gemini uses its own OpenAI-compatible shim
-  'google-gemini':   'https://generativelanguage.googleapis.com/v1beta/openai',
-  groq:              'https://api.groq.com/openai',
-  'mistral-ai':      'https://api.mistral.ai',
-  mistral:           'https://api.mistral.ai',
-  perplexity:        'https://api.perplexity.ai',
-  deepseek:          'https://api.deepseek.com',
-  'deepseek-coder':  'https://api.deepseek.com',
-  'xai-grok':        'https://api.x.ai',
-  cohere:            'https://api.cohere.ai/compatibility',
-  'together-ai':     'https://api.together.xyz',
-  'meta-llama':      'https://api.together.xyz',
-  'ai21-labs':       'https://api.ai21.com/studio',
-  qwen:              'https://dashscope-intl.aliyuncs.com/compatible-mode',
-  'microsoft-phi':   'https://api.openai.com',
-  'google-gemma':    'https://api.together.xyz',
-  'upstage-solar':   'https://api.upstage.ai',
-  'moonshot-kimi':   'https://api.moonshot.cn',
-  'nvidia-nim':      'https://integrate.api.nvidia.com',
-  'code-llama':      'https://api.together.xyz',
-  codestral:         'https://codestral.mistral.ai',
-  starcoder:         'https://api.together.xyz',
-  'wizard-coder':    'https://api.together.xyz',
-  'inflection-pi':   'https://api.inflection.ai',
-  'aleph-alpha':     'https://api.aleph-alpha.com',
-  huggingface:       'https://api-inference.huggingface.co/v1',
-  replicate:         'https://openai.on-replicate.com',
+  // OpenAI
+  'openai-gpt4o':     'https://api.openai.com',
+
+  // Anthropic  (uses x-api-key + anthropic-version, handled below)
+  'anthropic-claude': 'https://api.anthropic.com',
+
+  // Google Gemini  (OpenAI-compatible shim — /v1beta/openai/v1/chat/completions)
+  'google-gemini':    'https://generativelanguage.googleapis.com/v1beta/openai',
+
+  // Groq
+  groq:               'https://api.groq.com/openai',
+
+  // Mistral / Codestral
+  'mistral-ai':       'https://api.mistral.ai',
+  codestral:          'https://codestral.mistral.ai',
+
+  // Perplexity
+  perplexity:         'https://api.perplexity.ai',
+
+  // DeepSeek
+  deepseek:           'https://api.deepseek.com',
+  'deepseek-coder':   'https://api.deepseek.com',
+
+  // xAI / Grok
+  'xai-grok':         'https://api.x.ai',
+
+  // Cohere
+  cohere:             'https://api.cohere.ai/compatibility',
+
+  // Together AI  (hosts Llama, Gemma, WizardCoder, StarCoder, Code Llama…)
+  'together-ai':      'https://api.together.xyz',
+  'meta-llama':       'https://api.together.xyz',
+  'google-gemma':     'https://api.together.xyz',
+  'code-llama':       'https://api.together.xyz',
+  starcoder:          'https://api.together.xyz',
+  'wizard-coder':     'https://api.together.xyz',
+
+  // AI21 Labs
+  'ai21-labs':        'https://api.ai21.com/studio',
+
+  // Alibaba Qwen
+  qwen:               'https://dashscope-intl.aliyuncs.com/compatible-mode',
+
+  // Microsoft Phi  — hosted on HuggingFace inference
+  'microsoft-phi':    'https://api-inference.huggingface.co/v1',
+
+  // Upstage Solar
+  'upstage-solar':    'https://api.upstage.ai',
+
+  // Moonshot Kimi
+  'moonshot-kimi':    'https://api.moonshot.cn',
+
+  // NVIDIA NIM  — note: base already ends at /v1 so path becomes /v1/chat/completions
+  'nvidia-nim':       'https://integrate.api.nvidia.com/v1',
+
+  // HuggingFace
+  huggingface:        'https://api-inference.huggingface.co/v1',
+
+  // Azure OpenAI  — user must supply full endpoint as apiKey or endpoint param
+  'azure-openai':     '', // handled via CUSTOM_PATH with env-level override
+
+  // Amazon Bedrock / Vertex AI  — complex auth, degrade gracefully
+  'amazon-bedrock':   '',
+  'vertex-ai':        '',
+
+  // Replicate  (OpenAI-compatible proxy)
+  replicate:          'https://openai.on-replicate.com',
 };
 
-// Provider default models — used when frontend sends no model
+// Correct default model IDs that actually exist on each provider
 const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
-  'openai-gpt4o':    'gpt-4o',
-  'anthropic-claude':'claude-3-5-sonnet-20241022',
-  'google-gemini':   'gemini-2.5-flash',
-  groq:              'llama-3.3-70b-versatile',
-  'mistral-ai':      'mistral-large-latest',
-  perplexity:        'sonar',
-  deepseek:          'deepseek-chat',
-  'deepseek-coder':  'deepseek-coder',
-  'xai-grok':        'grok-3',
-  cohere:            'command-r-plus',
-  'together-ai':     'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
-  'meta-llama':      'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
-  'ai21-labs':       'jamba-1.5-large',
-  qwen:              'qwen-plus',
-  'moonshot-kimi':   'moonshot-v1-8k',
-  'nvidia-nim':      'meta/llama-3.3-70b-instruct',
-  codestral:         'codestral-latest',
-  huggingface:       'mistralai/Mistral-7B-Instruct-v0.2',
+  'openai-gpt4o':     'gpt-4o',
+  'anthropic-claude': 'claude-3-5-sonnet-20241022',
+  'google-gemini':    'gemini-2.5-flash',
+  groq:               'llama-3.3-70b-versatile',
+  'mistral-ai':       'mistral-large-latest',
+  codestral:          'codestral-latest',
+  perplexity:         'llama-3.1-sonar-large-128k-online',
+  deepseek:           'deepseek-chat',
+  'deepseek-coder':   'deepseek-coder-v2',
+  'xai-grok':         'grok-3',
+  cohere:             'command-r-plus-08-2024',
+  'together-ai':      'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+  'meta-llama':       'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+  'google-gemma':     'google/gemma-3-27b-it',
+  'code-llama':       'codellama/CodeLlama-70b-Instruct-hf',
+  starcoder:          'bigcode/starcoder2-15b-instruct-v0.1',
+  'wizard-coder':     'WizardLM/WizardCoder-Python-34B-V1.0',
+  'ai21-labs':        'jamba-1.5-large',
+  qwen:               'qwen-plus',
+  'microsoft-phi':    'microsoft/Phi-3.5-MoE-instruct',
+  'moonshot-kimi':    'moonshot-v1-8k',
+  'nvidia-nim':       'nvidia/llama-3.1-nemotron-70b-instruct',
+  huggingface:        'meta-llama/Meta-Llama-3-70B-Instruct',
+  replicate:          'meta/llama-2-70b-chat',
 };
 
 // Providers that use x-api-key header instead of Authorization: Bearer
 const XAPI_KEY_PROVIDERS = new Set(['anthropic-claude', 'anthropic']);
 
-// Providers whose /v1/chat/completions path differs
+// Providers that need a custom path instead of /v1/chat/completions
 const CUSTOM_PATH: Record<string, string> = {
-  'upstage-solar': '/v1/solar/chat/completions',
-  'inflection-pi': '/v1/chat',
+  'upstage-solar':    '/v1/chat/completions', // standard, explicit
+  'inflection-pi':    '/v1/chat',
+  'nvidia-nim':       '/chat/completions',    // base already has /v1 so final = /v1/chat/completions
 };
 
+// Image-generation providers and their direct API config
+interface ImageProviderConfig {
+  url: string;
+  buildBody: (model: string, prompt: string) => Record<string, unknown>;
+  extractUrl: (data: Record<string, unknown>) => string;
+  authHeader?: 'authorization' | 'x-api-key';
+}
+
+const IMAGE_PROVIDERS: Record<string, ImageProviderConfig> = {
+  'stability-ai': {
+    url: 'https://api.stability.ai/v2beta/stable-image/generate/core',
+    buildBody: (_model, prompt) => ({ prompt, output_format: 'webp' }),
+    extractUrl: (d) => {
+      // Stability returns base64 image in d.image
+      if (d.image) return `data:image/webp;base64,${d.image}`;
+      return (d as Record<string, unknown>).url as string ?? '';
+    },
+    authHeader: 'authorization',
+  },
+  dalle3: {
+    url: 'https://api.openai.com/v1/images/generations',
+    buildBody: (model, prompt) => ({ model: model || 'dall-e-3', prompt, n: 1, size: '1024x1024' }),
+    extractUrl: (d) => ((d as Record<string, unknown[]>).data as Record<string,string>[])?.[0]?.url ?? '',
+  },
+  flux: {
+    url: 'https://api.us1.bfl.ai/v1/flux-pro-1.1',
+    buildBody: (_model, prompt) => ({ prompt, width: 1024, height: 1024 }),
+    extractUrl: (d) => (d.sample as string) ?? '',
+  },
+  ideogram: {
+    url: 'https://api.ideogram.ai/generate',
+    buildBody: (model, prompt) => ({
+      image_request: { prompt, model: model || 'V_2', aspect_ratio: 'ASPECT_1_1' },
+    }),
+    extractUrl: (d) => ((d as Record<string,unknown>).data as Record<string,string>[])?.[0]?.url ?? '',
+    authHeader: 'x-api-key',
+  },
+  midjourney: {
+    // Midjourney uses imagine.api as a common proxy
+    url: 'https://api.userapi.ai/midjourney/v2/imagine',
+    buildBody: (_model, prompt) => ({ prompt }),
+    extractUrl: (d) => (d.result as string) ?? (d.uri as string) ?? '',
+    authHeader: 'x-api-key',
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: safe JSON parsing
+// ─────────────────────────────────────────────────────────────────────────────
+function extractError(raw: string): string {
+  try {
+    const p = JSON.parse(raw);
+    return p?.error?.message ?? p?.message ?? raw.slice(0, 400);
+  } catch {
+    return raw.slice(0, 400);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Call any chat-completion provider
+// ─────────────────────────────────────────────────────────────────────────────
 async function callChatCompletion(
   provider: string,
   apiKey: string,
@@ -74,10 +183,17 @@ async function callChatCompletion(
 ) {
   const baseUrl = PROVIDER_BASE_URLS[provider];
 
+  // Provider with empty base URL = no direct API support yet
+  if (baseUrl === '') {
+    throw new Error(
+      `"${provider}" requires complex authentication (AWS IAM / GCP credentials) that cannot be configured via a simple API key. Use a supported provider instead.`
+    );
+  }
+
   if (baseUrl) {
     if (!apiKey) {
       throw new Error(
-        `No API key configured for "${provider}". Open the Keys tab on the right and paste your key.`
+        `No API key configured for "${provider}". Open the Keys tab and paste your key.`
       );
     }
 
@@ -98,22 +214,15 @@ async function callChatCompletion(
     });
 
     const raw = await res.text();
-    if (!res.ok) {
-      let detail = raw.slice(0, 500);
-      try {
-        const parsed = JSON.parse(raw);
-        detail = parsed?.error?.message ?? detail;
-      } catch { /* keep raw */ }
-      throw new Error(`${provider} returned ${res.status}: ${detail}`);
-    }
+    if (!res.ok) throw new Error(`${provider} returned ${res.status}: ${extractError(raw)}`);
     return JSON.parse(raw);
   }
 
   // Unknown provider — fall back to Vercel AI Gateway
-  const gatewayKey = apiKey || process.env.AI_GATEWAY_API_KEY;
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
   if (!gatewayKey) {
     throw new Error(
-      'No API key available. Add your key in the Keys tab, or set AI_GATEWAY_API_KEY in Settings → Vars.'
+      `Provider "${provider}" is not directly supported. Set AI_GATEWAY_API_KEY in Settings → Vars to enable gateway fallback.`
     );
   }
   const res = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
@@ -125,44 +234,68 @@ async function callChatCompletion(
     body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
   });
   const raw = await res.text();
-  if (!res.ok) {
-    let detail = raw.slice(0, 500);
-    try {
-      const parsed = JSON.parse(raw);
-      detail = parsed?.error?.message ?? detail;
-    } catch { /* keep raw */ }
-    throw new Error(`AI Gateway returned ${res.status}: ${detail}`);
-  }
+  if (!res.ok) throw new Error(`AI Gateway returned ${res.status}: ${extractError(raw)}`);
   return JSON.parse(raw);
 }
 
-async function callAIGateway(endpoint: string, body: unknown) {
-  const apiKey = process.env.AI_GATEWAY_API_KEY;
-  if (!apiKey) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Call an image-generation provider directly, or fall back to AI Gateway
+// ─────────────────────────────────────────────────────────────────────────────
+async function callImageGeneration(
+  provider: string,
+  apiKey: string,
+  model: string,
+  prompt: string
+): Promise<string> {
+  const cfg = IMAGE_PROVIDERS[provider];
+
+  if (cfg && apiKey) {
+    const authHeader = cfg.authHeader === 'x-api-key' ? 'x-api-key' : 'Authorization';
+    const authValue  = cfg.authHeader === 'x-api-key' ? apiKey : `Bearer ${apiKey}`;
+
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        [authHeader]: authValue,
+      },
+      body: JSON.stringify(cfg.buildBody(model, prompt)),
+    });
+
+    const raw = await res.text();
+    if (!res.ok) throw new Error(`${provider} returned ${res.status}: ${extractError(raw)}`);
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(raw); } catch { data = {}; }
+    const url = cfg.extractUrl(data);
+    if (url) return url;
+    throw new Error(`${provider} returned no image URL.`);
+  }
+
+  // Fall back to Vercel AI Gateway
+  const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+  if (!gatewayKey) {
     throw new Error(
-      'AI_GATEWAY_API_KEY is not set. Add it in Settings → Vars to enable image/video generation.'
+      'No image API key configured. Open the Keys tab and add a key for your image provider, or set AI_GATEWAY_API_KEY in Settings → Vars.'
     );
   }
-  const res = await fetch(`https://ai-gateway.vercel.sh${endpoint}`, {
+  const res = await fetch('https://ai-gateway.vercel.sh/v1/images/generations', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${gatewayKey}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ prompt, model: 'google/imagen-4.0-generate-001', n: 1, size: '1024x1024' }),
   });
   const raw = await res.text();
-  if (!res.ok) {
-    let detail = raw.slice(0, 500);
-    try {
-      const parsed = JSON.parse(raw);
-      detail = parsed?.error?.message ?? detail;
-    } catch { /* keep raw */ }
-    throw new Error(`AI Gateway returned ${res.status}: ${detail}`);
-  }
-  return JSON.parse(raw);
+  if (!res.ok) throw new Error(`AI Gateway returned ${res.status}: ${extractError(raw)}`);
+  const data = JSON.parse(raw);
+  return data?.data?.[0]?.url ?? data?.url ?? '';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Route handler
+// ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
     const {
@@ -176,21 +309,23 @@ export async function POST(request: Request) {
       model,
     } = await request.json();
 
-    const resolvedProvider = (provider ?? 'openai-gpt4o') as string;
-    const resolvedApiKey   = ((apiKey as string) ?? '').trim();
+    const resolvedProvider = (provider as string) || 'openai-gpt4o';
+    const resolvedApiKey   = ((apiKey as string) || '').trim();
     const resolvedModel    = ((model as string) || PROVIDER_DEFAULT_MODELS[resolvedProvider] || 'gpt-4o');
 
-    // ── IMAGE GENERATION ───────────────────────────────────────────────────
-    if (message.startsWith('/image ') || message.startsWith('/imagine ')) {
-      const prompt = message.replace(/^\/(image|imagine)\s+/, '').trim();
-      const data = await callAIGateway('/v1/images/generations', {
-        prompt,
-        model: 'google/imagen-4.0-generate-001',
-        n: 1,
-        size: '1024x1024',
-      });
-      const url = data?.data?.[0]?.url ?? data?.url ?? '';
-      if (!url) throw new Error('No image URL in the API response.');
+    // ── IMAGE GENERATION (via /image or /imagine command, or image-category provider) ──
+    if (
+      message.startsWith('/image ') ||
+      message.startsWith('/imagine ') ||
+      resolvedProvider in IMAGE_PROVIDERS
+    ) {
+      const rawPrompt = message
+        .replace(/^\/(image|imagine)\s+/, '')
+        .trim();
+      const prompt = rawPrompt || message;
+
+      const url = await callImageGeneration(resolvedProvider, resolvedApiKey, resolvedModel, prompt);
+      if (!url) throw new Error('No image URL returned from the API.');
       return Response.json({
         role: 'assistant',
         content: `Here is your generated image for: "${prompt}"`,
@@ -202,12 +337,18 @@ export async function POST(request: Request) {
     // ── VIDEO GENERATION ───────────────────────────────────────────────────
     if (message.startsWith('/video ')) {
       const prompt = message.replace('/video ', '').trim();
-      const data = await callAIGateway('/v1/videos/generations', {
-        prompt,
-        model: 'luma/genie-2.5-generate-001',
+      const gatewayKey = process.env.AI_GATEWAY_API_KEY;
+      if (!gatewayKey) throw new Error('Set AI_GATEWAY_API_KEY in Settings → Vars to enable video generation.');
+      const res = await fetch('https://ai-gateway.vercel.sh/v1/videos/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${gatewayKey}` },
+        body: JSON.stringify({ prompt, model: 'luma/genie-2.5-generate-001' }),
       });
+      const raw = await res.text();
+      if (!res.ok) throw new Error(`Video generation returned ${res.status}: ${extractError(raw)}`);
+      const data = JSON.parse(raw);
       const url = data?.data?.[0]?.url ?? data?.url ?? '';
-      if (!url) throw new Error('No video URL in the API response.');
+      if (!url) throw new Error('No video URL returned from the API.');
       return Response.json({
         role: 'assistant',
         content: `Here is your generated video for: "${prompt}"`,
@@ -216,14 +357,14 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── AUDIO GENERATION ──────────────────────────────────────────────────
+    // ── AUDIO NARRATION ──────────────────────────────────────────────────
     if (message.startsWith('/audio ')) {
       const topic = message.replace('/audio ', '').trim();
       const data = await callChatCompletion(
         resolvedProvider,
         resolvedApiKey,
         resolvedModel,
-        [{ role: 'user', content: `Write a clear 2–3 paragraph narration script (30–60 seconds when read aloud) about: "${topic}". Write it as natural spoken words, no bullet points.` }],
+        [{ role: 'user', content: `Write a clear 2-3 paragraph narration script (30-60 seconds when read aloud) about: "${topic}". Write it as natural spoken words with no bullet points.` }],
         0.7,
         1024
       );
@@ -269,7 +410,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'An unexpected error occurred.';
     console.error('[chat route]', msg);
-    // Return 200 with the error in content so the frontend can display it
     return Response.json({ role: 'assistant', content: `Error: ${msg}`, type: 'text' });
   }
 }
